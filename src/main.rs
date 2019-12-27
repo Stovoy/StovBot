@@ -1,6 +1,15 @@
 use std::thread::sleep;
 use std::{time, io};
-use std::io::{Read, empty};
+use std::fs;
+use serde::{Deserialize};
+
+mod twitch;
+
+#[derive(Deserialize, Debug)]
+struct Secrets {
+    token: String,
+}
+
 
 fn main() {
     let mut stov_bot = StovBot {
@@ -12,6 +21,10 @@ fn main() {
         response: "test successful".to_string(),
     }));
 
+    let secrets_file = fs::read_to_string("secrets.toml").expect("failed to read secrets");
+
+    let secrets: Secrets = toml::from_str(&secrets_file).expect("failed to parse secrets");
+    twitch::connect(secrets.token);
 
     loop {
         sleep(time::Duration::from_millis(10));

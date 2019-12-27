@@ -5,3 +5,8 @@ authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+twitchchat = "0.7.2"
+toml = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4.8"
+env_logger = "0.4.3"
