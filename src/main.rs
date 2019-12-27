@@ -1,15 +1,13 @@
-use std::thread::sleep;
-use std::{time, io};
 use std::fs;
 use serde::{Deserialize};
 
+mod gui;
 mod twitch;
 
 #[derive(Deserialize, Debug)]
 struct Secrets {
     token: String,
 }
-
 
 fn main() {
     let mut stov_bot = StovBot {
@@ -21,26 +19,17 @@ fn main() {
         response: "test successful".to_string(),
     }));
 
+    gui::run();
+
     let secrets_file = fs::read_to_string("secrets.toml").expect("failed to read secrets");
 
     let secrets: Secrets = toml::from_str(&secrets_file).expect("failed to parse secrets");
     twitch::connect(secrets.token);
 
-    loop {
-        sleep(time::Duration::from_millis(10));
-
-        let mut buffer = String::new();
-        // TODO: How to read line without blocking?
-        let input = io::stdin().read_line(&mut buffer).unwrap();
-        let mut messages = Vec::new();
-        let buffer = buffer.trim();
-        messages.push(Message {
-            sender: User { username: "Stovoy".to_string() },
-            text: buffer.to_string(),
-        });
-
-        stov_bot.process_messages(messages);
-    }
+    stov_bot.process_messages(vec![Message {
+        sender: User { username: "Stovoy".to_string() },
+        text: "test!".to_string(),
+    }]);
 }
 
 struct StovBot {
