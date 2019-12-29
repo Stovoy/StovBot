@@ -1,10 +1,9 @@
 use crate::bot;
-use crate::bot::BotEvent;
 use crate::discord::DiscordEvent;
 use crate::twitch::TwitchEvent;
-use crate::{discord, twitch, Secrets};
-use crossbeam::channel;
-use crossbeam::channel::Receiver;
+use crate::ConnectError;
+use crate::ConnectedState;
+use crate::{discord, twitch};
 use futures::stream::BoxStream;
 use futures::task::{Context, Poll, Waker};
 use iced::{
@@ -16,8 +15,6 @@ use serde::export::Formatter;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::Debug;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::thread;
 
 pub fn run() {
     BotGui::run(Settings::default())
@@ -27,15 +24,6 @@ pub fn run() {
 struct BotGui {
     last: Vec<Event>,
     connections: Option<ConnectedState>,
-}
-
-#[derive(Clone)]
-struct ConnectedState {
-    bot_event_receiver: Receiver<BotEvent>,
-    twitch_event_receiver: Receiver<TwitchEvent>,
-    discord_event_receiver: Receiver<DiscordEvent>,
-
-    shared_state: Arc<Mutex<SharedState>>,
 }
 
 // Application needs Debug implemented, but we can't implement it on an Arc.
@@ -55,86 +43,6 @@ enum Message {
     EventOccurred(Event),
 }
 
-#[derive(Debug, Clone)]
-enum ConnectError {
-    FileError,
-}
-
-async fn connect() -> Result<ConnectedState, ConnectError> {
-    let secrets_file = async_std::fs::read_to_string("secrets.toml")
-        .await
-        .map_err(|_| ConnectError::FileError)?;
-
-    let secrets: Secrets = toml::from_str(&secrets_file).expect("failed to parse secrets");
-
-    let shared_state = Arc::new(Mutex::new(SharedState { waker: None }));
-
-    let mut twitch_event_senders = Vec::new();
-    let mut twitch_event_receivers = Vec::new();
-    for _ in 0..2 {
-        let (s, r) = channel::bounded(10);
-        twitch_event_senders.push(s);
-        twitch_event_receivers.push(r);
-    }
-
-    let mut discord_event_senders = Vec::new();
-    let mut discord_event_receivers = Vec::new();
-    for _ in 0..2 {
-        let (s, r) = channel::bounded(10);
-        discord_event_senders.push(s);
-        discord_event_receivers.push(r);
-    }
-
-    let (bot_event_sender, bot_event_receiver) = channel::bounded(0);
-
-    let (twitch_client, twitch_writer) = twitch::connect(secrets.twitch_token);
-    let thread_shared_state = shared_state.clone();
-    thread::spawn(|| {
-        twitch::listen(twitch_client, twitch_event_senders, thread_shared_state);
-    });
-
-    let thread_shared_state = shared_state.clone();
-    let discord_token = secrets.discord_token;
-    thread::spawn(|| {
-        let mut discord_client =
-            discord::connect(discord_token, discord_event_senders, thread_shared_state);
-        if let Err(why) = discord_client.start_autosharded() {
-            println!("Discord client error: {:?}", why);
-        }
-        println!("started");
-    });
-
-    let bot_twitch_event_receiver = twitch_event_receivers[0].clone();
-    let bot_discord_event_receiver = discord_event_receivers[0].clone();
-
-    thread::spawn(|| {
-        twitch_writer.join("stovoy").unwrap();
-        let mut stov_bot = bot::Bot {
-            username: "StovBot".to_string(),
-            commands: Vec::new(),
-            bot_event_sender,
-            twitch_event_receiver: bot_twitch_event_receiver,
-            discord_event_receiver: bot_discord_event_receiver,
-            twitch_writer,
-        };
-        stov_bot.commands.push(Box::from(bot::BasicCommand {
-            trigger: "!test".to_string(),
-            response: "test successful".to_string(),
-        }));
-        loop {
-            stov_bot.process_messages();
-        }
-    });
-
-    Ok(ConnectedState {
-        bot_event_receiver,
-        twitch_event_receiver: twitch_event_receivers[1].clone(),
-        discord_event_receiver: discord_event_receivers[1].clone(),
-
-        shared_state,
-    })
-}
-
 impl Application for BotGui {
     type Message = Message;
 
@@ -144,7 +52,7 @@ impl Application for BotGui {
                 last: Vec::new(),
                 connections: None,
             },
-            Command::perform(connect(), Message::Connected),
+            Command::perform(crate::connect(), Message::Connected),
         )
     }
 
