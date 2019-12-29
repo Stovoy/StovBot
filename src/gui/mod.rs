@@ -1,7 +1,8 @@
 use crate::bot;
 use crate::bot::BotEvent;
+use crate::discord::DiscordEvent;
 use crate::twitch::TwitchEvent;
-use crate::{twitch, Secrets};
+use crate::{discord, twitch, Secrets};
 use crossbeam::channel;
 use crossbeam::channel::Receiver;
 use futures::stream::BoxStream;
@@ -32,6 +33,7 @@ struct BotGui {
 struct ConnectedState {
     bot_event_receiver: Receiver<BotEvent>,
     twitch_event_receiver: Receiver<TwitchEvent>,
+    discord_event_receiver: Receiver<DiscordEvent>,
 
     shared_state: Arc<Mutex<SharedState>>,
 }
@@ -74,15 +76,36 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
         twitch_event_senders.push(s);
         twitch_event_receivers.push(r);
     }
+
+    let mut discord_event_senders = Vec::new();
+    let mut discord_event_receivers = Vec::new();
+    for _ in 0..2 {
+        let (s, r) = channel::bounded(10);
+        discord_event_senders.push(s);
+        discord_event_receivers.push(r);
+    }
+
     let (bot_event_sender, bot_event_receiver) = channel::bounded(0);
 
-    let (twitch_client, twitch_writer) = twitch::connect(secrets.token);
+    let (twitch_client, twitch_writer) = twitch::connect(secrets.twitch_token);
     let thread_shared_state = shared_state.clone();
     thread::spawn(|| {
         twitch::listen(twitch_client, twitch_event_senders, thread_shared_state);
     });
 
+    let thread_shared_state = shared_state.clone();
+    let discord_token = secrets.discord_token;
+    thread::spawn(|| {
+        let mut discord_client =
+            discord::connect(discord_token, discord_event_senders, thread_shared_state);
+        if let Err(why) = discord_client.start_autosharded() {
+            println!("Discord client error: {:?}", why);
+        }
+        println!("started");
+    });
+
     let bot_twitch_event_receiver = twitch_event_receivers[0].clone();
+    let bot_discord_event_receiver = discord_event_receivers[0].clone();
 
     thread::spawn(|| {
         twitch_writer.join("stovoy").unwrap();
@@ -91,6 +114,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
             commands: Vec::new(),
             bot_event_sender,
             twitch_event_receiver: bot_twitch_event_receiver,
+            discord_event_receiver: bot_discord_event_receiver,
             twitch_writer,
         };
         stov_bot.commands.push(Box::from(bot::BasicCommand {
@@ -105,6 +129,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     Ok(ConnectedState {
         bot_event_receiver,
         twitch_event_receiver: twitch_event_receivers[1].clone(),
+        discord_event_receiver: discord_event_receivers[1].clone(),
 
         shared_state,
     })
@@ -166,6 +191,12 @@ impl Application for BotGui {
                             format!("{}: {}", msg.user(), msg.message()).to_string()
                         }
                     },
+                    Event::DiscordEvent(e) => match e {
+                        DiscordEvent::Ready => "Discord - Ready".to_string(),
+                        DiscordEvent::Message(_, msg) => {
+                            format!("{}: {}", msg.author.name, msg.content).to_string()
+                        }
+                    },
                 };
                 column.push(Text::new(text).size(40).width(Length::Shrink))
             },
@@ -194,14 +225,14 @@ impl futures::stream::Stream for ConnectedState {
         match self.bot_event_receiver.try_recv() {
             Ok(e) => Poll::Ready(Some(Event::BotEvent(e))),
             Err(_) => match self.twitch_event_receiver.try_recv() {
-                Ok(e) => {
-                    let e = Event::TwitchEvent(e);
-                    Poll::Ready(Some(e))
-                }
-                Err(_e) => {
-                    shared_state.waker = Some(cx.waker().clone());
-                    Poll::Pending
-                }
+                Ok(e) => Poll::Ready(Some(Event::TwitchEvent(e))),
+                Err(_) => match self.discord_event_receiver.try_recv() {
+                    Ok(e) => Poll::Ready(Some(Event::DiscordEvent(e))),
+                    Err(_) => {
+                        shared_state.waker = Some(cx.waker().clone());
+                        Poll::Pending
+                    }
+                },
             },
         }
     }
@@ -211,10 +242,18 @@ impl futures::stream::Stream for ConnectedState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Event {
     BotEvent(bot::BotEvent),
     TwitchEvent(twitch::TwitchEvent),
+    DiscordEvent(discord::DiscordEvent),
+}
+
+// Application needs Debug implemented, but we can't implement it on an DiscordEvent.
+impl Debug for Event {
+    fn fmt(&self, _: &mut Formatter<'_>) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 pub struct Events(ConnectedState);

@@ -1,10 +1,9 @@
+use crate::gui::SharedState;
 use crossbeam::channel;
 use env_logger;
 use std::net::TcpStream;
-use twitchchat::*;
-
-use crate::gui::SharedState;
 use std::sync::{Arc, Mutex};
+use twitchchat::*;
 
 pub fn connect(token: String) -> (Client<TcpStream>, Writer) {
     env_logger::init().unwrap();

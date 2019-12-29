@@ -1,5 +1,9 @@
+use crate::discord::DiscordEvent;
 use crate::twitch::TwitchEvent;
 use crossbeam::channel;
+use serenity::model::channel::Message as DiscordMessage;
+use serenity::prelude::Context as DiscordContext;
+use serenity::utils::MessageBuilder as DiscordMessageBuilder;
 
 #[derive(Debug, Clone)]
 pub struct BotEvent {}
@@ -8,8 +12,9 @@ pub struct Bot {
     pub username: String,
     pub commands: Vec<Box<dyn Command>>,
     pub bot_event_sender: channel::Sender<BotEvent>,
-    pub twitch_writer: twitchchat::Writer,
     pub twitch_event_receiver: channel::Receiver<TwitchEvent>,
+    pub discord_event_receiver: channel::Receiver<DiscordEvent>,
+    pub twitch_writer: twitchchat::Writer,
 }
 
 impl Bot {
@@ -25,7 +30,23 @@ impl Bot {
                         username: msg.user().to_string(),
                     },
                     text: msg.message().to_string(),
+                    source: Source::Twitch("stovoy".to_string()),
                 }),
+            },
+            Err(_) => {}
+        }
+        match self.discord_event_receiver.try_recv() {
+            Ok(event) => match event {
+                DiscordEvent::Ready => {}
+                DiscordEvent::Message(ctx, msg) => {
+                    messages.push(Message {
+                        sender: User {
+                            username: msg.author.name.to_string(),
+                        },
+                        text: msg.content.to_string(),
+                        source: Source::Discord(ctx, msg),
+                    });
+                }
             },
             Err(_) => {}
         }
@@ -33,7 +54,7 @@ impl Bot {
             self.debug_message(&format!("{}: {}", message.sender.username, message.text));
             let responses = self.respond(message);
             for response in responses.iter() {
-                self.send_message(&response.text);
+                self.send_message(&message.source, &response.text);
             }
         }
     }
@@ -60,8 +81,20 @@ impl Bot {
         println!("{}", text);
     }
 
-    fn send_message(&self, text: &String) {
-        self.twitch_writer.send("stovoy", text).unwrap();
+    fn send_message(&self, source: &Source, text: &String) {
+        match source {
+            #[cfg(test)]
+            Source::None => {}
+            Source::Twitch(channel) => {
+                self.twitch_writer.send(channel, text).unwrap();
+            }
+            Source::Discord(ctx, msg) => {
+                let response = DiscordMessageBuilder::new().push(text).build();
+                if let Err(why) = msg.channel_id.say(&ctx.http, &response) {
+                    println!("Error sending message: {:?}", why);
+                }
+            }
+        }
         println!("{}", text);
     }
 }
@@ -73,6 +106,14 @@ pub struct BotMessage {
 pub struct Message {
     sender: User,
     text: String,
+    source: Source,
+}
+
+enum Source {
+    #[cfg(test)]
+    None,
+    Twitch(String),
+    Discord(DiscordContext, DiscordMessage),
 }
 
 impl Message {
@@ -83,6 +124,7 @@ impl Message {
                 username: "".to_string(),
             },
             text,
+            source: Source::None,
         }
     }
 }
