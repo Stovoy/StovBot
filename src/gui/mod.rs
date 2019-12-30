@@ -12,9 +12,9 @@ use iced::{
 use iced_native::subscription::Recipe;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
-use std::collections::hash_map::DefaultHasher;
 use std::fmt::Debug;
 use std::pin::Pin;
+use std::hash::{Hash, Hasher};
 
 pub fn run() {
     BotGui::run(Settings::default())
@@ -166,35 +166,13 @@ impl Debug for Event {
 
 pub struct Events(ConnectedState);
 
-/// The hasher used to compare subscriptions.
-#[derive(Debug)]
-pub struct Hasher(DefaultHasher);
-
-impl Default for Hasher {
-    fn default() -> Self {
-        Hasher(DefaultHasher::default())
-    }
-}
-
-impl std::hash::Hasher for Hasher {
-    fn finish(&self) -> u64 {
-        self.0.finish()
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        self.0.write(bytes)
-    }
-}
-
 impl<H, I> Recipe<H, I> for Events
 where
-    H: std::hash::Hasher,
+    H: Hasher,
 {
     type Output = Event;
 
     fn hash(&self, state: &mut H) {
-        use std::hash::Hash;
-
         std::any::TypeId::of::<Self>().hash(state);
     }
 

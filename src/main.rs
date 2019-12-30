@@ -68,7 +68,11 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let (twitch_client, twitch_writer) = twitch::connect(secrets.twitch_token);
     let thread_shared_state = shared_state.clone();
     thread::spawn(|| {
-        twitch::listen(twitch_client, twitch_event_senders, thread_shared_state);
+        let handler = twitch::Handler {
+            senders: twitch_event_senders,
+            shared_state: thread_shared_state,
+        };
+        handler.listen(twitch_client);
     });
 
     let thread_shared_state = shared_state.clone();
