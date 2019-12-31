@@ -3,6 +3,7 @@ use crate::discord::DiscordEvent;
 use crate::twitch::TwitchEvent;
 use crossbeam::channel;
 use crossbeam::channel::Receiver;
+use db::Database;
 use futures::task::{Context, Poll, Waker};
 use futures::Stream;
 use serde::export::fmt::Error;
@@ -80,8 +81,9 @@ pub struct SharedState {
 }
 
 async fn connect() -> Result<ConnectedState, ConnectError> {
-    if let Err(e) = db::main() {
-        println!("Database error: {}", e)
+    match Database::new() {
+        Ok(_database) => {}
+        Err(e) => println!("Database error: {}", e),
     }
     let secrets_file = async_std::fs::read_to_string("secrets.toml")
         .await
