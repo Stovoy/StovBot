@@ -18,8 +18,8 @@ pub fn connect(token: String) -> (Client<TcpStream>, Writer) {
             .build()
             .expect("error creating UserConfig"),
     )
-        .expect("failed to connect to twitch")
-        .filter::<commands::PrivMsg>();
+    .expect("failed to connect to twitch")
+    .filter::<commands::PrivMsg>();
 
     let writer = client.writer();
     (client, writer)

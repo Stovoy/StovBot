@@ -1,3 +1,4 @@
+use crate::command;
 use crate::discord::DiscordEvent;
 use crate::twitch::TwitchEvent;
 use crossbeam::channel;
@@ -9,12 +10,15 @@ use serenity::utils::MessageBuilder as DiscordMessageBuilder;
 pub struct BotEvent {}
 
 pub struct Bot {
-    pub username: String,
-    pub commands: Vec<Box<dyn Command>>,
-    pub bot_event_sender: channel::Sender<BotEvent>,
-    pub twitch_event_receiver: channel::Receiver<TwitchEvent>,
-    pub discord_event_receiver: channel::Receiver<DiscordEvent>,
-    pub twitch_writer: twitchchat::Writer,
+    pub(crate) username: String,
+    pub(crate) commands: Vec<command::Command>,
+
+    #[allow(dead_code)]
+    pub(crate) bot_event_sender: channel::Sender<BotEvent>,
+
+    pub(crate) twitch_event_receiver: channel::Receiver<TwitchEvent>,
+    pub(crate) discord_event_receiver: channel::Receiver<DiscordEvent>,
+    pub(crate) twitch_writer: twitchchat::Writer,
 }
 
 impl Bot {
@@ -100,16 +104,16 @@ impl Bot {
 }
 
 pub struct BotMessage {
-    text: String,
+    pub(crate) text: String,
 }
 
 pub struct Message {
-    sender: User,
-    text: String,
-    source: Source,
+    pub(crate) sender: User,
+    pub(crate) text: String,
+    pub(crate) source: Source,
 }
 
-enum Source {
+pub(crate) enum Source {
     #[cfg(test)]
     None,
     Twitch(String),
@@ -118,10 +122,10 @@ enum Source {
 
 impl Message {
     #[cfg(test)]
-    fn new(text: String) -> Message {
+    pub(crate) fn new(text: String) -> Message {
         Message {
             sender: User {
-                username: "".to_string(),
+                username: "foo".to_string(),
             },
             text,
             source: Source::None,
@@ -129,46 +133,6 @@ impl Message {
     }
 }
 
-struct User {
-    username: String,
-}
-
-pub trait Command {
-    fn respond(&self, message: &Message) -> Option<BotMessage>;
-}
-
-pub struct BasicCommand {
-    pub trigger: String,
-    pub response: String,
-}
-
-impl Command for BasicCommand {
-    fn respond(&self, message: &Message) -> Option<BotMessage> {
-        if message.text == self.trigger {
-            return Some(BotMessage {
-                text: self.response.clone(),
-            });
-        }
-
-        None
-    }
-}
-
-#[test]
-fn test_basic_command() {
-    let response = "test successful!".to_string();
-    let command = BasicCommand {
-        trigger: "!test".to_string(),
-        response: response.clone(),
-    };
-    assert_eq!(
-        response,
-        command
-            .respond(&Message::new("!test".to_string()))
-            .unwrap()
-            .text
-    );
-    assert!(command
-        .respond(&Message::new("random text".to_string()))
-        .is_none());
+pub(crate) struct User {
+    pub(crate) username: String,
 }

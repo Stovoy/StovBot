@@ -9,9 +9,11 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 mod bot;
+mod command;
 mod db;
 mod discord;
 mod gui;
+mod script;
 mod twitch;
 
 #[derive(Deserialize, Debug)]
@@ -99,10 +101,23 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
             discord_event_receiver: bot_discord_event_receiver,
             twitch_writer,
         };
-        stov_bot.commands.push(Box::from(bot::BasicCommand {
+        stov_bot.commands.push(command::Command {
             trigger: "!test".to_string(),
             response: "test successful".to_string(),
-        }));
+        });
+        stov_bot.commands.push(command::Command {
+            trigger: "!8ball".to_string(),
+            response: "🎱 {{\
+            let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
+             \"You may rely on it.\", \"Concentrate and ask again...\", \
+             \"Outlook not so good...\", \"It is decidedly so!\", \
+             \"Better not tell you.\", \"Very doubtful.\", \"Yes - Definitely!\", \
+             \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
+             \"Outlook good.\", \
+             \"Don't count on it.\"]; \
+              responses[floor(random() * len(responses))]\
+            }}".to_string(),
+        });
         loop {
             stov_bot.process_messages();
         }

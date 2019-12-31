@@ -17,3 +17,6 @@ crossbeam = "0.7.3"
 async-std = "1.4.0"
 futures = "0.3.1"
 serenity = "0.7.4"
+logos = "0.9.7"
+rhai = { git = "https://github.com/stovoy/rhai", branch = "master" }
+rand = "0.7.2"

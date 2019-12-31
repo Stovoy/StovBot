@@ -13,8 +13,8 @@ use iced_native::subscription::Recipe;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
 use std::fmt::Debug;
-use std::pin::Pin;
 use std::hash::{Hash, Hasher};
+use std::pin::Pin;
 
 pub fn run() {
     BotGui::run(Settings::default())
