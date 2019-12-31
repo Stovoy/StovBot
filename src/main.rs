@@ -92,7 +92,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let bot_discord_event_receiver = discord_event_receivers[0].clone();
 
     thread::spawn(|| {
-        let mut stov_bot = bot::Bot {
+        let mut stovbot = bot::Bot {
             username: "StovBot".to_string(),
             commands: Vec::new(),
             bot_event_sender,
@@ -100,11 +100,11 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
             discord_event_receiver: bot_discord_event_receiver,
             twitch_writer,
         };
-        stov_bot.commands.push(command::Command {
+        stovbot.commands.push(command::Command {
             trigger: "!test".to_string(),
             response: "test successful".to_string(),
         });
-        stov_bot.commands.push(command::Command {
+        stovbot.commands.push(command::Command {
             trigger: "!8ball".to_string(),
             response: "🎱 {{\
             let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
@@ -117,7 +117,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
               responses[floor(random() * len(responses))]\
             }}".to_string(),
         });
-        stov_bot.run();
+        stovbot.run();
     });
 
     Ok(ConnectedState {

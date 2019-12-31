@@ -1,5 +1,5 @@
 [package]
-name = "stov_bot"
+name = "stovbot"
 version = "0.1.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
