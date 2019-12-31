@@ -92,7 +92,6 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let bot_discord_event_receiver = discord_event_receivers[0].clone();
 
     thread::spawn(|| {
-        twitch_writer.join("stovoy").unwrap();
         let mut stov_bot = bot::Bot {
             username: "StovBot".to_string(),
             commands: Vec::new(),
@@ -118,9 +117,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
               responses[floor(random() * len(responses))]\
             }}".to_string(),
         });
-        loop {
-            stov_bot.process_messages();
-        }
+        stov_bot.run();
     });
 
     Ok(ConnectedState {

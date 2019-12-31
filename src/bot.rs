@@ -2,6 +2,7 @@ use crate::command;
 use crate::discord::DiscordEvent;
 use crate::twitch::TwitchEvent;
 use crossbeam::channel;
+use crossbeam::channel::select;
 use serenity::model::channel::Message as DiscordMessage;
 use serenity::prelude::Context as DiscordContext;
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
@@ -22,43 +23,48 @@ pub struct Bot {
 }
 
 impl Bot {
-    pub fn process_messages(&mut self) {
-        let mut messages = Vec::new();
-        match self.twitch_event_receiver.try_recv() {
-            Ok(event) => match event {
-                TwitchEvent::Ready => {
-                    self.twitch_writer.join("stovoy").unwrap();
+    pub fn run(&mut self) {
+        loop {
+            let message = select! {
+                recv(self.twitch_event_receiver) -> msg => match msg {
+                    Ok(event) => match event {
+                        TwitchEvent::Ready => {
+                            self.twitch_writer.join("stovoy").unwrap();
+                            None
+                        }
+                        TwitchEvent::PrivMsg(msg) => Some(Message {
+                            sender: User {
+                                username: msg.user().to_string(),
+                            },
+                            text: msg.message().to_string(),
+                            source: Source::Twitch("stovoy".to_string()),
+                        })
+                    }
+                    Err(_) => None,
+                },
+                recv(self.discord_event_receiver) -> msg => match msg {
+                    Ok(event) => match event {
+                        DiscordEvent::Ready => None,
+                        DiscordEvent::Message(ctx, msg) => Some(Message {
+                            sender: User {
+                                username: msg.author.name.to_string(),
+                            },
+                            text: msg.content.to_string(),
+                            source: Source::Discord(ctx, msg),
+                        })
+                    }
+                    Err(_) => None,
+                },
+            };
+            match message {
+                None => {},
+                Some(message) => {
+                    self.debug_message(&format!("{}: {}", message.sender.username, message.text));
+                    let responses = self.respond(&message);
+                    for response in responses.iter() {
+                        self.send_message(&message.source, &response.text);
+                    }
                 }
-                TwitchEvent::PrivMsg(msg) => messages.push(Message {
-                    sender: User {
-                        username: msg.user().to_string(),
-                    },
-                    text: msg.message().to_string(),
-                    source: Source::Twitch("stovoy".to_string()),
-                }),
-            },
-            Err(_) => {}
-        }
-        match self.discord_event_receiver.try_recv() {
-            Ok(event) => match event {
-                DiscordEvent::Ready => {}
-                DiscordEvent::Message(ctx, msg) => {
-                    messages.push(Message {
-                        sender: User {
-                            username: msg.author.name.to_string(),
-                        },
-                        text: msg.content.to_string(),
-                        source: Source::Discord(ctx, msg),
-                    });
-                }
-            },
-            Err(_) => {}
-        }
-        for message in messages.iter() {
-            self.debug_message(&format!("{}: {}", message.sender.username, message.text));
-            let responses = self.respond(message);
-            for response in responses.iter() {
-                self.send_message(&message.source, &response.text);
             }
         }
     }
