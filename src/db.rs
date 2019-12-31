@@ -3,11 +3,22 @@ use time;
 use time::Timespec;
 
 #[derive(Debug)]
-struct Person {
+struct Command {
     id: i32,
-    name: String,
     time_created: Timespec,
-    data: Option<Vec<u8>>,
+    trigger: String,
+    response: String,
+}
+
+impl Command {
+    fn new(trigger: String, response: String) -> Command {
+        Command {
+            id: 0,
+            time_created: time::empty_tm().to_timespec(),
+            trigger,
+            response,
+        }
+    }
 }
 
 pub fn main() -> Result<()> {
@@ -15,38 +26,34 @@ pub fn main() -> Result<()> {
     let conn = Connection::open(&path)?;
 
     conn.execute(
-        "CREATE TABLE person (
-                  id              INTEGER PRIMARY KEY,
-                  name            TEXT NOT NULL,
-                  time_created    TEXT NOT NULL,
-                  data            BLOB
-                  )",
+        "CREATE TABLE IF NOT EXISTS command (
+          id            INTEGER PRIMARY KEY AUTOINCREMENT,
+          time_created  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          trigger       TEXT NOT NULL UNIQUE,
+          response      TEXT NOT NULL
+        )",
         params![],
     )?;
-    let me = Person {
-        id: 0,
-        name: "Steve".to_string(),
-        time_created: time::get_time(),
-        data: None,
-    };
+
+    let command = Command::new("!test".to_string(), "response".to_string());
     conn.execute(
-        "INSERT INTO person (name, time_created, data)
-                  VALUES (?1, ?2, ?3)",
-        params![me.name, me.time_created, me.data],
+        "INSERT INTO command (trigger, response) VALUES (?1, ?2)",
+        params![command.trigger, command.response],
     )?;
 
-    let mut stmt = conn.prepare("SELECT id, name, time_created, data FROM person")?;
-    let person_iter = stmt.query_map(params![], |row| {
-        Ok(Person {
+    let mut statement = conn.prepare(
+        "SELECT id, time_created, trigger, response FROM command")?;
+    let commands = statement.query_map(params![], |row| {
+        Ok(Command {
             id: row.get(0)?,
-            name: row.get(1)?,
-            time_created: row.get(2)?,
-            data: row.get(3)?,
+            time_created: row.get(1)?,
+            trigger: row.get(2)?,
+            response: row.get(3)?,
         })
     })?;
 
-    for person in person_iter {
-        println!("Found person {:?}", person.unwrap());
+    for command in commands {
+        println!("Found command {:?}", command.unwrap());
     }
     Ok(())
 }
