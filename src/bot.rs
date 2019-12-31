@@ -1,11 +1,15 @@
 use crate::command;
+use crate::db::Database;
 use crate::discord::DiscordEvent;
 use crate::twitch::TwitchEvent;
-use crossbeam::channel;
 use crossbeam::channel::select;
+use crossbeam::channel::Receiver;
+use crossbeam::channel::Sender;
+use rusqlite::Error;
 use serenity::model::channel::Message as DiscordMessage;
 use serenity::prelude::Context as DiscordContext;
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
+use twitchchat::Writer;
 
 #[derive(Debug, Clone)]
 pub struct BotEvent {}
@@ -15,15 +19,49 @@ pub struct Bot {
     pub(crate) commands: Vec<command::Command>,
 
     #[allow(dead_code)]
-    pub(crate) bot_event_sender: channel::Sender<BotEvent>,
+    pub(crate) bot_event_sender: Sender<BotEvent>,
 
-    pub(crate) twitch_event_receiver: channel::Receiver<TwitchEvent>,
-    pub(crate) discord_event_receiver: channel::Receiver<DiscordEvent>,
-    pub(crate) twitch_writer: twitchchat::Writer,
+    pub(crate) twitch_event_receiver: Receiver<TwitchEvent>,
+    pub(crate) discord_event_receiver: Receiver<DiscordEvent>,
+    pub(crate) twitch_writer: Writer,
 }
 
 impl Bot {
-    pub fn run(&mut self) {
+    pub(crate) fn new(
+        bot_event_sender: Sender<BotEvent>,
+        twitch_event_receiver: Receiver<TwitchEvent>,
+        discord_event_receiver: Receiver<DiscordEvent>,
+        twitch_writer: Writer,
+    ) -> Result<Bot, Error> {
+        let mut stovbot = Bot {
+            username: "StovBot".to_string(),
+            commands: Vec::new(),
+            bot_event_sender,
+            twitch_event_receiver,
+            discord_event_receiver,
+            twitch_writer,
+        };
+        let _database = Database::new()?;
+        stovbot.commands.push(command::Command {
+            trigger: "!test".to_string(),
+            response: "test successful".to_string(),
+        });
+        stovbot.commands.push(command::Command {
+            trigger: "!8ball".to_string(),
+            response: "🎱 {{\
+            let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
+             \"You may rely on it.\", \"Concentrate and ask again...\", \
+             \"Outlook not so good...\", \"It is decidedly so!\", \
+             \"Better not tell you.\", \"Very doubtful.\", \"Yes - Definitely!\", \
+             \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
+             \"Outlook good.\", \
+             \"Don't count on it.\"]; \
+              responses[floor(random() * len(responses))]\
+            }}".to_string(),
+        });
+        Ok(stovbot)
+    }
+    pub fn run(&self) {
         loop {
             let message = select! {
                 recv(self.twitch_event_receiver) -> msg => match msg {
@@ -68,7 +106,7 @@ impl Bot {
         }
     }
 
-    fn respond(&mut self, message: &Message) -> Vec<BotMessage> {
+    fn respond(&self, message: &Message) -> Vec<BotMessage> {
         let mut responses = Vec::new();
         if message.sender.username == self.username {
             return responses;

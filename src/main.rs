@@ -1,9 +1,8 @@
-use crate::bot::BotEvent;
-use crate::discord::DiscordEvent;
-use crate::twitch::TwitchEvent;
+use bot::Bot;
+use bot::BotEvent;
 use crossbeam::channel;
 use crossbeam::channel::Receiver;
-use db::Database;
+use discord::DiscordEvent;
 use futures::task::{Context, Poll, Waker};
 use futures::Stream;
 use serde::export::fmt::Error;
@@ -13,6 +12,7 @@ use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use twitch::TwitchEvent;
 
 mod bot;
 mod command;
@@ -81,10 +81,6 @@ pub struct SharedState {
 }
 
 async fn connect() -> Result<ConnectedState, ConnectError> {
-    match Database::new() {
-        Ok(_database) => {}
-        Err(e) => println!("Database error: {}", e),
-    }
     let secrets_file = async_std::fs::read_to_string("secrets.toml")
         .await
         .map_err(|_| ConnectError::FileError)?;
@@ -135,32 +131,19 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let bot_discord_event_receiver = discord_event_receivers[0].clone();
 
     thread::spawn(|| {
-        let mut stovbot = bot::Bot {
-            username: "StovBot".to_string(),
-            commands: Vec::new(),
+        match Bot::new(
             bot_event_sender,
-            twitch_event_receiver: bot_twitch_event_receiver,
-            discord_event_receiver: bot_discord_event_receiver,
+            bot_twitch_event_receiver,
+            bot_discord_event_receiver,
             twitch_writer,
-        };
-        stovbot.commands.push(command::Command {
-            trigger: "!test".to_string(),
-            response: "test successful".to_string(),
-        });
-        stovbot.commands.push(command::Command {
-            trigger: "!8ball".to_string(),
-            response: "🎱 {{\
-            let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
-             \"You may rely on it.\", \"Concentrate and ask again...\", \
-             \"Outlook not so good...\", \"It is decidedly so!\", \
-             \"Better not tell you.\", \"Very doubtful.\", \"Yes - Definitely!\", \
-             \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
-             \"Outlook good.\", \
-             \"Don't count on it.\"]; \
-              responses[floor(random() * len(responses))]\
-            }}".to_string(),
-        });
-        stovbot.run();
+        ) {
+            Ok(stovbot) => {
+                stovbot.run();
+            }
+            Err(e) => {
+                println!("Error running bot: {}", e);
+            }
+        }
     });
 
     Ok(ConnectedState {
