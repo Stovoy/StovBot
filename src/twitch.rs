@@ -1,4 +1,4 @@
-use crate::gui::SharedState;
+use crate::SharedState;
 use crossbeam::channel;
 use env_logger;
 use std::net::TcpStream;
@@ -54,7 +54,6 @@ impl Handler {
                     self.send_event(TwitchEvent::Ready);
                 }
                 Event::Message(Message::PrivMsg(msg)) => {
-                    println!("Private message - {}: {}", msg.user(), msg.message());
                     self.send_event(TwitchEvent::PrivMsg(msg));
                 }
                 Event::Message(Message::Irc(_)) => {}

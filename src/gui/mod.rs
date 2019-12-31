@@ -1,17 +1,11 @@
-use crate::bot;
-use crate::discord::DiscordEvent;
-use crate::twitch::TwitchEvent;
 use crate::ConnectError;
 use crate::ConnectedState;
-use crate::{discord, twitch};
+use crate::Event;
 use futures::stream::BoxStream;
-use futures::task::{Context, Poll, Waker};
 use iced::{
     Align, Application, Column, Command, Container, Element, Length, Settings, Subscription, Text,
 };
 use iced_native::subscription::Recipe;
-use serde::export::fmt::Error;
-use serde::export::Formatter;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
@@ -24,17 +18,6 @@ pub fn run() {
 struct BotGui {
     last: Vec<Event>,
     connections: Option<ConnectedState>,
-}
-
-// Application needs Debug implemented, but we can't implement it on an Arc.
-impl Debug for ConnectedState {
-    fn fmt(&self, _: &mut Formatter<'_>) -> Result<(), Error> {
-        Ok(())
-    }
-}
-
-pub struct SharedState {
-    pub waker: Option<Waker>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,21 +74,7 @@ impl Application for BotGui {
         let events = self.last.iter().fold(
             Column::new().width(Length::Shrink).spacing(10),
             |column, event| {
-                let text = match event {
-                    Event::BotEvent(_e) => format!("bot event"),
-                    Event::TwitchEvent(e) => match e {
-                        TwitchEvent::Ready => "Twitch - Ready".to_string(),
-                        TwitchEvent::PrivMsg(msg) => {
-                            format!("{}: {}", msg.user(), msg.message()).to_string()
-                        }
-                    },
-                    Event::DiscordEvent(e) => match e {
-                        DiscordEvent::Ready => "Discord - Ready".to_string(),
-                        DiscordEvent::Message(_, msg) => {
-                            format!("{}: {}", msg.author.name, msg.content).to_string()
-                        }
-                    },
-                };
+                let text = format!("{:?}", event);
                 column.push(Text::new(text).size(40).width(Length::Shrink))
             },
         );
@@ -122,45 +91,6 @@ impl Application for BotGui {
             .center_x()
             .center_y()
             .into()
-    }
-}
-
-impl futures::stream::Stream for ConnectedState {
-    type Item = Event;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut shared_state = self.shared_state.lock().unwrap();
-        match self.bot_event_receiver.try_recv() {
-            Ok(e) => Poll::Ready(Some(Event::BotEvent(e))),
-            Err(_) => match self.twitch_event_receiver.try_recv() {
-                Ok(e) => Poll::Ready(Some(Event::TwitchEvent(e))),
-                Err(_) => match self.discord_event_receiver.try_recv() {
-                    Ok(e) => Poll::Ready(Some(Event::DiscordEvent(e))),
-                    Err(_) => {
-                        shared_state.waker = Some(cx.waker().clone());
-                        Poll::Pending
-                    }
-                },
-            },
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        unimplemented!()
-    }
-}
-
-#[derive(Clone)]
-pub enum Event {
-    BotEvent(bot::BotEvent),
-    TwitchEvent(twitch::TwitchEvent),
-    DiscordEvent(discord::DiscordEvent),
-}
-
-// Application needs Debug implemented, but we can't implement it on an DiscordEvent.
-impl Debug for Event {
-    fn fmt(&self, _: &mut Formatter<'_>) -> Result<(), Error> {
-        Ok(())
     }
 }
 

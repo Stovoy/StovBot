@@ -1,8 +1,14 @@
 [package]
 name = "stovbot"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
+
+[features]
+default = ["gui"]
+
+# Include the Iced UI.
+gui = ["iced", "iced_native", "iced_core"]
 
 [dependencies]
 twitchchat = "0.7.2"
@@ -10,9 +16,6 @@ toml = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4.8"
 env_logger = "0.4.3"
-iced = { git = "https://github.com/hecrj/iced", branch = "master" }
-iced_native = { git = "https://github.com/hecrj/iced", branch = "master" }
-iced_core = { git = "https://github.com/hecrj/iced", branch = "master" }
 crossbeam = "0.7.3"
 async-std = "1.4.0"
 futures = "0.3.1"
@@ -20,3 +23,10 @@ serenity = "0.7.4"
 logos = "0.9.7"
 rhai = { git = "https://github.com/stovoy/rhai", branch = "master" }
 rand = "0.7.2"
+rusqlite = "0.21.0"
+time = "0.1.0"
+
+# Optional dependencies
+iced = { git = "https://github.com/hecrj/iced", branch = "master", optional = true}
+iced_native = { git = "https://github.com/hecrj/iced", branch = "master", optional = true }
+iced_core = { git = "https://github.com/hecrj/iced", branch = "master", optional = true }

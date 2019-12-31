@@ -57,9 +57,8 @@ impl Bot {
                 },
             };
             match message {
-                None => {},
+                None => {}
                 Some(message) => {
-                    self.debug_message(&format!("{}: {}", message.sender.username, message.text));
                     let responses = self.respond(&message);
                     for response in responses.iter() {
                         self.send_message(&message.source, &response.text);
@@ -87,10 +86,6 @@ impl Bot {
         responses
     }
 
-    fn debug_message(&self, text: &String) {
-        println!("{}", text);
-    }
-
     fn send_message(&self, source: &Source, text: &String) {
         match source {
             #[cfg(test)]
@@ -105,7 +100,6 @@ impl Bot {
                 }
             }
         }
-        println!("{}", text);
     }
 }
 

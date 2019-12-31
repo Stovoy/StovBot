@@ -1,5 +1,5 @@
-/*
 use rusqlite::{params, Connection, Result};
+use time;
 use time::Timespec;
 
 #[derive(Debug)]
@@ -10,8 +10,9 @@ struct Person {
     data: Option<Vec<u8>>,
 }
 
-fn main() -> Result<()> {
-    let conn = Connection::open_in_memory()?;
+pub fn main() -> Result<()> {
+    let path = "./db.db3";
+    let conn = Connection::open(&path)?;
 
     conn.execute(
         "CREATE TABLE person (
@@ -24,7 +25,7 @@ fn main() -> Result<()> {
     )?;
     let me = Person {
         id: 0,
-        name: "Steven".to_string(),
+        name: "Steve".to_string(),
         time_created: time::get_time(),
         data: None,
     };
@@ -49,4 +50,3 @@ fn main() -> Result<()> {
     }
     Ok(())
 }
-*/
