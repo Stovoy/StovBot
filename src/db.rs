@@ -1,25 +1,5 @@
-use rusqlite::{params, Connection, Result, Row};
-use time;
-use time::Timespec;
-
-#[derive(Debug)]
-pub(crate) struct Command {
-    id: i32,
-    time_created: Timespec,
-    trigger: String,
-    response: String,
-}
-
-impl Command {
-    pub(crate) fn new(trigger: String, response: String) -> Command {
-        Command {
-            id: 0,
-            time_created: time::empty_tm().to_timespec(),
-            trigger,
-            response,
-        }
-    }
-}
+use crate::command::Command;
+use rusqlite::{params, Connection, Error, ErrorCode, Result, Row};
 
 pub(crate) struct Database {
     connection: Connection,
@@ -43,7 +23,7 @@ impl Database {
         Ok(database)
     }
 
-    fn migrate(&self) -> Result<usize> {
+    fn migrate(&self) -> Result<()> {
         self.connection.execute(
             "CREATE TABLE IF NOT EXISTS command (
               id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +32,26 @@ impl Database {
               response      TEXT NOT NULL
           )",
             params![],
-        )
+        )?;
+
+        for command in Command::default_commands() {
+            if let Err(error) = self.add_command(command) {
+                match error {
+                    Error::SqliteFailure(inner_error, _) => {
+                        if inner_error.code == ErrorCode::ConstraintViolation {
+                            continue;
+                        } else {
+                            return Err(error);
+                        }
+                    }
+                    _ => {
+                        return Err(error);
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub(crate) fn add_command(&self, command: Command) -> Result<usize> {
@@ -91,7 +90,13 @@ fn test_add_command() -> Result<()> {
         "test successful".to_string(),
     ))?;
     let commands = database.get_commands()?;
-    assert_eq!(1, commands.len());
-    assert_eq!("!test", commands.get(0).unwrap().trigger);
+    assert!(commands.len() > 0);
+    let mut found = false;
+    for command in commands {
+        if command.trigger == "!test" {
+            found = true;
+        }
+    }
+    assert!(found);
     Ok(())
 }

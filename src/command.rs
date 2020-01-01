@@ -1,11 +1,7 @@
 use crate::bot::{BotMessage, Message};
 use crate::script::ScriptEngine;
 use logos::Logos;
-
-pub struct Command {
-    pub(crate) trigger: String,
-    pub(crate) response: String,
-}
+use time::Timespec;
 
 #[derive(Logos, Debug, PartialEq)]
 enum Token {
@@ -37,10 +33,22 @@ enum Token {
     Other,
 }
 
+#[derive(Debug)]
+pub(crate) struct Command {
+    pub(crate) id: i32,
+    pub(crate) time_created: Timespec,
+    pub(crate) trigger: String,
+    pub(crate) response: String,
+}
+
 impl Command {
-    #[cfg(test)]
     pub(crate) fn new(trigger: String, response: String) -> Command {
-        Command { trigger, response }
+        Command {
+            id: 0,
+            time_created: time::empty_tm().to_timespec(),
+            trigger,
+            response,
+        }
     }
 
     pub(crate) fn respond(&self, message: &Message) -> Option<BotMessage> {
@@ -53,7 +61,8 @@ impl Command {
     }
 
     fn parse(&self, message: &Message) -> String {
-        let mut args = message.text.split(" ");
+        let (_, text) = message.text.split_at(self.trigger.len());
+        let mut args = text.split(" ");
         let mut lexer = Token::lexer(self.response.as_str());
         let mut response = "".to_string();
         let mut script = "".to_string();
@@ -112,6 +121,23 @@ impl Command {
         }
 
         return response;
+    }
+
+    pub(crate) fn default_commands() -> Vec<Command> {
+        vec![Command::new(
+            "!8ball".to_string(),
+            "🎱 {{\
+             let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
+             \"You may rely on it.\", \"Concentrate and ask again...\", \
+             \"Outlook not so good...\", \"It is decidedly so!\", \
+             \"Better not tell you.\", \"Very doubtful.\", \"Yes - Definitely!\", \
+             \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
+             \"Outlook good.\", \
+             \"Don't count on it.\"]; \
+             responses[floor(random() * len(responses))]\
+             }}"
+            .to_string(),
+        )]
     }
 }
 
