@@ -1,11 +1,10 @@
 [package]
 name = "stovbot"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
 
 [features]
-default = ["gui"]
 
 # Include the Iced UI.
 gui = ["iced", "iced_native", "iced_core"]
