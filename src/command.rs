@@ -357,3 +357,14 @@ fn test_infinite_loop() {
     let response = command.respond(&Message::new("!loop".to_string())).unwrap().text;
     assert!(response.contains("Timeout"));
 }
+
+#[test]
+fn test_d6() {
+    let command = Command::new(
+        "!d6".to_string(),
+        "{{floor(random() * 6) + 1 * int(\"$1\")}}".to_string(),
+    );
+    let response = command.respond(&Message::new("!d6".to_string())).unwrap().text;
+    let n: i64 = response.parse().unwrap();
+    assert!(n >= 1 && n <= 6);
+}
