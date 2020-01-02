@@ -1,6 +1,8 @@
 use crate::bot::{BotMessage, Message};
 use crate::script::ScriptEngine;
 use logos::Logos;
+use std::collections::hash_map::Values;
+use std::collections::HashMap;
 use time::Timespec;
 
 #[derive(Logos, Debug, PartialEq)]
@@ -33,35 +35,71 @@ enum Token {
     Other,
 }
 
+type Actor = fn(&Command, &Message) -> Result<Action, ActionError>;
+
+pub(crate) enum Action {
+    AddCommand(Command),
+    DeleteCommand(Command),
+    EditCommand(Command),
+}
+
 #[derive(Debug)]
+pub(crate) enum ActionError {
+    CommandAlreadyExists,
+    CommandDoesNotExist,
+    CannotDeleteBuiltInCommand,
+    CannotModifyBuiltInCommand,
+    BadCommand(String),
+    BadCommandTriggerPrefix,
+}
+
+#[derive(Clone)]
 pub(crate) struct Command {
     pub(crate) id: i32,
     pub(crate) time_created: Timespec,
     pub(crate) trigger: String,
     pub(crate) response: String,
+    pub(crate) actor: Option<Actor>,
 }
 
 impl Command {
     pub(crate) fn new(trigger: String, response: String) -> Command {
+        Command::new_with_actor(trigger, response, None)
+    }
+
+    pub(crate) fn new_with_actor(
+        trigger: String,
+        response: String,
+        actor: Option<Actor>,
+    ) -> Command {
         Command {
             id: 0,
             time_created: time::empty_tm().to_timespec(),
             trigger,
             response,
+            actor,
         }
     }
 
-    pub(crate) fn respond(&self, message: &Message) -> Option<BotMessage> {
-        if message.text.starts_with(&self.trigger) {
-            let response = self.parse(&message);
-            return Some(BotMessage { text: response });
-        }
+    pub(crate) fn matches_trigger(&self, message: &Message) -> bool {
+        message.text == self.trigger || message.text.starts_with(&format!("{} ", self.trigger))
+    }
 
-        None
+    #[cfg(test)]
+    pub(crate) fn respond(&self, message: &Message) -> Option<BotMessage> {
+        match self.matches_trigger(message) {
+            true => Some(self.respond_no_check(message)),
+            false => None,
+        }
+    }
+
+    pub(crate) fn respond_no_check(&self, message: &Message) -> BotMessage {
+        let response = self.parse(&message);
+        BotMessage { text: response }
     }
 
     fn parse(&self, message: &Message) -> String {
-        let (_, text) = message.text.split_at(self.trigger.len());
+        let text = message.after_trigger(&self.trigger);
         let mut args = text.split(" ");
         let mut lexer = Token::lexer(self.response.as_str());
         let mut response = "".to_string();
@@ -71,13 +109,13 @@ impl Command {
         loop {
             match lexer.token {
                 Token::ArgOne => {
-                    *accumulator += match args.nth(1) {
+                    *accumulator += match args.nth(0) {
                         Some(text) => text,
                         None => "",
                     };
                 }
                 Token::ArgTwo => {
-                    *accumulator += match args.nth(2) {
+                    *accumulator += match args.nth(1) {
                         Some(text) => text,
                         None => "",
                     };
@@ -138,6 +176,39 @@ impl Command {
              }}"
             .to_string(),
         )]
+    }
+}
+
+pub(crate) struct Commands {
+    commands: HashMap<String, Command>,
+}
+
+impl Commands {
+    pub(crate) fn new(commands: Vec<Command>) -> Commands {
+        let mut commands_map = HashMap::new();
+        for command in commands {
+            commands_map.insert(command.trigger.clone(), command);
+        }
+        Commands {
+            commands: commands_map,
+        }
+    }
+
+    pub(crate) fn iter(&self) -> Values<'_, String, Command> {
+        self.commands.values()
+    }
+
+    pub(crate) fn contains(&self, command: &Command) -> bool {
+        self.commands.contains_key(&command.trigger)
+    }
+
+    pub(crate) fn update_command(&mut self, command: &Command) {
+        self.commands
+            .insert(command.trigger.clone(), command.clone());
+    }
+
+    pub(crate) fn delete_command(&mut self, command: &Command) {
+        self.commands.remove(&command.trigger);
     }
 }
 

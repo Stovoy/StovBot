@@ -19,6 +19,7 @@ mod command;
 mod db;
 mod discord;
 mod script;
+mod special_command;
 mod twitch;
 
 #[cfg(feature = "gui")]
@@ -137,7 +138,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
             bot_discord_event_receiver,
             twitch_writer,
         ) {
-            Ok(stovbot) => {
+            Ok(mut stovbot) => {
                 stovbot.run();
             }
             Err(e) => {

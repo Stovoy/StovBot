@@ -1,6 +1,7 @@
-use crate::command;
+use crate::command::{Action, ActionError, Command, Commands};
 use crate::db::Database;
 use crate::discord::DiscordEvent;
+use crate::special_command;
 use crate::twitch::TwitchEvent;
 use crossbeam::channel::{select, Receiver, Sender};
 use rusqlite::Error;
@@ -14,7 +15,7 @@ pub struct BotEvent {}
 
 pub struct Bot {
     pub(crate) username: String,
-    pub(crate) commands: Vec<command::Command>,
+    pub(crate) commands: Commands,
 
     #[allow(dead_code)]
     pub(crate) bot_event_sender: Sender<BotEvent>,
@@ -23,6 +24,7 @@ pub struct Bot {
     pub(crate) discord_event_receiver: Receiver<DiscordEvent>,
     pub(crate) twitch_writer: Writer,
 
+    #[allow(dead_code)]
     pub(crate) database: Database,
 }
 
@@ -34,25 +36,32 @@ impl Bot {
         twitch_writer: Writer,
     ) -> Result<Bot, Error> {
         let database = Database::new()?;
-        let mut stovbot = Bot {
+        let mut commands = special_command::commands();
+        commands.append(database.get_commands()?.as_mut());
+        let stovbot = Bot {
             username: "StovBot".to_string(),
-            commands: Vec::new(),
+            commands: Commands::new(commands),
             bot_event_sender,
             twitch_event_receiver,
             discord_event_receiver,
             twitch_writer,
             database,
         };
-        stovbot.load_commands()?;
         Ok(stovbot)
     }
 
-    fn load_commands(&mut self) -> Result<(), Error> {
-        self.commands = self.database.get_commands()?;
-        Ok(())
+    fn is_builtin_command(&self, command: &Command) -> bool {
+        Command::default_commands()
+            .iter()
+            .find(|default_command| default_command.trigger == command.trigger)
+            .is_some()
+            || special_command::commands()
+                .iter()
+                .find(|special_command| special_command.trigger == command.trigger)
+                .is_some()
     }
 
-    pub fn run(&self) {
+    pub(crate) fn run(&mut self) {
         loop {
             let message = select! {
                 recv(self.twitch_event_receiver) -> msg => match msg {
@@ -87,32 +96,101 @@ impl Bot {
             };
             match message {
                 None => {}
-                Some(message) => {
-                    let responses = self.respond(&message);
-                    for response in responses.iter() {
-                        self.send_message(&message.source, &response.text);
-                    }
-                }
+                Some(message) => match self.respond(&message) {
+                    None => {}
+                    Some(response) => self.send_message(&message.source, &response.text),
+                },
             }
         }
     }
 
-    fn respond(&self, message: &Message) -> Vec<BotMessage> {
-        let mut responses = Vec::new();
+    fn respond(&mut self, message: &Message) -> Option<BotMessage> {
         if message.sender.username == self.username {
-            return responses;
+            return None;
         }
 
-        for command in self.commands.iter() {
-            match command.respond(message) {
-                Some(response) => {
-                    responses.push(response);
+        let mut deferred_action = None;
+
+        let triggered_command = self
+            .commands
+            .iter()
+            .find(|command| command.matches_trigger(message));
+        let response = match triggered_command {
+            None => None,
+            Some(command) => {
+                let action_error = match command.actor {
+                    None => None,
+                    Some(actor) => match actor(&command, message) {
+                        Ok(action) => {
+                            let action_error = match &action {
+                                Action::AddCommand(command) => {
+                                    match self.commands.contains(command) {
+                                        true => Some(ActionError::CommandAlreadyExists),
+                                        false => None,
+                                    }
+                                }
+                                Action::DeleteCommand(command) => {
+                                    if !self.commands.contains(command) {
+                                        Some(ActionError::CommandDoesNotExist)
+                                    } else if self.is_builtin_command(command) {
+                                        Some(ActionError::CannotDeleteBuiltInCommand)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                Action::EditCommand(command) => {
+                                    if !self.commands.contains(command) {
+                                        Some(ActionError::CommandDoesNotExist)
+                                    } else if self.is_builtin_command(command) {
+                                        Some(ActionError::CannotModifyBuiltInCommand)
+                                    } else {
+                                        None
+                                    }
+                                }
+                            };
+                            match action_error {
+                                None => deferred_action = Some(action),
+                                Some(_) => {}
+                            };
+                            action_error
+                        }
+                        Err(e) => Some(e),
+                    },
+                };
+                match action_error {
+                    None => Some(command.respond_no_check(message)),
+                    Some(e) => Some(BotMessage {
+                        text: format!("{:?}", e),
+                    }),
                 }
-                _ => {}
             }
+        };
+
+        match deferred_action {
+            None => {}
+            Some(deferred_action) => match deferred_action {
+                Action::AddCommand(command) => {
+                    if let Err(e) = self.database.add_command(&command) {
+                        println!("Error adding command {}: {}", command.trigger, e)
+                    }
+                    self.commands.update_command(&command);
+                }
+                Action::DeleteCommand(command) => {
+                    if let Err(e) = self.database.delete_command(&command) {
+                        println!("Error deleting command {}: {}", command.trigger, e)
+                    }
+                    self.commands.delete_command(&command);
+                }
+                Action::EditCommand(command) => {
+                    if let Err(e) = self.database.update_command(&command) {
+                        println!("Error updating command {}: {}", command.trigger, e)
+                    }
+                    self.commands.update_command(&command);
+                }
+            },
         }
 
-        responses
+        response
     }
 
     fn send_message(&self, source: &Source, text: &String) {
@@ -158,6 +236,15 @@ impl Message {
             },
             text,
             source: Source::None,
+        }
+    }
+
+    pub(crate) fn after_trigger(&self, trigger: &String) -> &str {
+        if trigger.len() + 1 > self.text.len() {
+            ""
+        } else {
+            let (_, text) = self.text.split_at(trigger.len() + 1);
+            text
         }
     }
 }

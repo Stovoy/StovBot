@@ -35,7 +35,7 @@ impl Database {
         )?;
 
         for command in Command::default_commands() {
-            if let Err(error) = self.add_command(command) {
+            if let Err(error) = self.add_command(&command) {
                 match error {
                     Error::SqliteFailure(inner_error, _) => {
                         if inner_error.code == ErrorCode::ConstraintViolation {
@@ -54,9 +54,23 @@ impl Database {
         Ok(())
     }
 
-    pub(crate) fn add_command(&self, command: Command) -> Result<usize> {
+    pub(crate) fn add_command(&self, command: &Command) -> Result<usize> {
         self.connection.execute(
             "INSERT INTO command (trigger, response) VALUES (?1, ?2)",
+            params![command.trigger, command.response],
+        )
+    }
+
+    pub(crate) fn delete_command(&self, command: &Command) -> Result<usize> {
+        self.connection.execute(
+            "DELETE FROM command WHERE trigger = ?1",
+            params![command.trigger],
+        )
+    }
+
+    pub(crate) fn update_command(&self, command: &Command) -> Result<usize> {
+        self.connection.execute(
+            "UPDATE command SET response = ?2 WHERE trigger = ?1",
             params![command.trigger, command.response],
         )
     }
@@ -71,6 +85,7 @@ impl Database {
                 time_created: row.get(1)?,
                 trigger: row.get(2)?,
                 response: row.get(3)?,
+                actor: None,
             })
         })?;
 
@@ -85,7 +100,7 @@ impl Database {
 #[test]
 fn test_add_command() -> Result<()> {
     let database = Database::new_in_memory()?;
-    database.add_command(Command::new(
+    database.add_command(&Command::new(
         "!test".to_string(),
         "test successful".to_string(),
     ))?;
