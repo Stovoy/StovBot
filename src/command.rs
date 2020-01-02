@@ -368,3 +368,14 @@ fn test_d6() {
     let n: i64 = response.parse().unwrap();
     assert!(n >= 1 && n <= 6);
 }
+
+
+#[test]
+fn test_coinflip() {
+    let command = Command::new(
+        "!coinflip".to_string(),
+        "{{if random() > 0.5 { \"Heads!\" } else { \"Tails!\" }}}".to_string(),
+    );
+    let response = command.respond(&Message::new("!coinflip".to_string())).unwrap().text;
+    assert!(response == "Heads!" || response == "Tails!");
+}

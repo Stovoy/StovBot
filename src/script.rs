@@ -21,7 +21,7 @@ impl ScriptEngine {
         engine.register_fn("len", ScriptFunction::len);
         engine.register_fn("floor", ScriptFunction::floor);
         engine.register_fn("int", ScriptFunction::int);
-        engine.register_fn("*", ScriptFunction::mul_f32_u32);
+        engine.register_fn("*", ScriptFunction::mul_f64_i64);
         ScriptEngine(engine)
     }
 
@@ -77,7 +77,7 @@ impl ScriptFunction {
         format!("{}", x)
     }
 
-    fn random() -> f32 {
+    fn random() -> f64 {
         let mut rng = rand::thread_rng();
         rng.gen_range(0.0, 1.0)
     }
@@ -86,7 +86,7 @@ impl ScriptFunction {
         x.len().try_into().unwrap()
     }
 
-    fn floor(x: f32) -> i64 {
+    fn floor(x: f64) -> i64 {
         x.floor() as i64
     }
 
@@ -97,7 +97,7 @@ impl ScriptFunction {
         }
     }
 
-    fn mul_f32_u32(x: f32, y: i64) -> f32 {
-        x * (y as f32)
+    fn mul_f64_i64(x: f64, y: i64) -> f64 {
+        x * (y as f64)
     }
 }
