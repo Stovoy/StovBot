@@ -28,6 +28,9 @@ enum Token {
     #[token = "{{"]
     ScriptStart,
 
+    #[token = "}}}"]
+    ScriptEndAndExtra,
+
     #[token = "}}"]
     ScriptEnd,
 
@@ -145,6 +148,17 @@ impl Command {
                         *accumulator += lexer.slice();
                     }
                 }
+                Token::ScriptEndAndExtra => {
+                    if in_script {
+                        *accumulator += "}";
+                        let script_result = &ScriptEngine::run(&script);
+                        accumulator = &mut response;
+                        *accumulator += script_result;
+                        in_script = false;
+                    } else {
+                        *accumulator += lexer.slice();
+                    }
+                }
                 Token::Other => {
                     *accumulator += lexer.slice();
                 }
@@ -174,7 +188,7 @@ impl Command {
              \"Don't count on it.\"]; \
              responses[floor(random() * len(responses))]\
              }}"
-            .to_string(),
+                .to_string(),
         )]
     }
 }
@@ -316,7 +330,7 @@ fn test_8ball() {
          \"Don't count on it.\"]; \
          responses[floor(random() * len(responses))]\
          }}"
-        .to_string(),
+            .to_string(),
     );
     for _ in 0..10 {
         let response = command
@@ -332,4 +346,14 @@ fn test_8ball() {
         }
         assert!(found);
     }
+}
+
+#[test]
+fn test_infinite_loop() {
+    let command = Command::new(
+        "!loop".to_string(),
+        "{{loop{}}}".to_string(),
+    );
+    let response = command.respond(&Message::new("!loop".to_string())).unwrap().text;
+    assert!(response.contains("Timeout"));
 }

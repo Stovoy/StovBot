@@ -28,7 +28,7 @@ impl ScriptEngine {
         let millis = 1000;
         match ScriptEngine::eval_with_timeout(script, millis) {
             Ok(result) => result,
-            Err(_) => format!("{{Script Error: Timeout after {} seconds}}", millis / 1000),
+            Err(_) => format!("Script Error: Timeout after {} seconds", millis / 1000),
         }
     }
 
@@ -42,11 +42,13 @@ impl ScriptEngine {
                 Ok(result) => result,
                 Err(e) => match &e {
                     EvalAltResult::ErrorMismatchOutputType(t, output) => match t.as_ref() {
+                        "i32" => format!("{}", output.clone().downcast::<i32>().unwrap()),
                         "i64" => format!("{}", output.clone().downcast::<i64>().unwrap()),
+                        "f32" => format!("{}", output.clone().downcast::<f32>().unwrap()),
                         "f64" => format!("{}", output.clone().downcast::<f64>().unwrap()),
-                        _ => format!("{{Script Error: Unknown type {}}}", e),
+                        _ => format!("Script Error: Unknown type {}", e),
                     },
-                    _ => format!("{{Script Error: {}}}", e),
+                    _ => format!("Script Error: {}", e),
                 },
             };
 
