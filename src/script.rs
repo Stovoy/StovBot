@@ -47,6 +47,7 @@ impl ScriptEngine {
                         "i64" => format!("{}", output.clone().downcast::<i64>().unwrap()),
                         "f32" => format!("{}", output.clone().downcast::<f32>().unwrap()),
                         "f64" => format!("{}", output.clone().downcast::<f64>().unwrap()),
+                        "bool" => format!("{}", output.clone().downcast::<bool>().unwrap()),
                         _ => format!("Script Error: Unknown type {}", e),
                     },
                     _ => format!("Script Error: {}", e),
