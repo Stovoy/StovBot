@@ -1,21 +1,20 @@
+use crossbeam::channel::bounded;
+use crossbeam::channel::RecvTimeoutError;
 use rand::Rng;
 use rhai::{Any, AnyExt, Engine, EvalAltResult, RegisterFn};
 use std::convert::TryInto;
 use std::fmt::Display;
+use std::thread;
 use std::time::Duration;
-use async_std::future;
-use async_std::future::TimeoutError;
-use async_std::task;
 
 pub(crate) struct ScriptEngine(Engine);
 
 impl ScriptEngine {
     fn new() -> ScriptEngine {
         let mut engine = Engine::new();
-        engine.register_fn(
-            "to_string",
-            ScriptFunction::to_string as fn(x: i64) -> String,
-        );
+        engine.register_fn("string", ScriptFunction::string as fn(x: i64) -> String);
+        engine.register_fn("string", ScriptFunction::string as fn(x: f32) -> String);
+        engine.register_fn("string", ScriptFunction::string as fn(x: bool) -> String);
         engine.register_fn("random", ScriptFunction::random);
         engine.register_fn("len", ScriptFunction::len);
         engine.register_fn("floor", ScriptFunction::floor);
@@ -26,17 +25,18 @@ impl ScriptEngine {
 
     pub(crate) fn run(script: &String) -> String {
         let millis = 1000;
-        match task::block_on(ScriptEngine::eval_with_timeout(script, millis)) {
+        match ScriptEngine::eval_with_timeout(script, millis) {
             Ok(result) => result,
             Err(_) => format!("Script Error: Timeout after {} seconds", millis / 1000),
         }
     }
 
-    async fn eval_with_timeout(script: &String, timeout_millis: u64) -> Result<String, TimeoutError> {
+    fn eval_with_timeout(script: &String, timeout_millis: u64) -> Result<String, RecvTimeoutError> {
+        let (sender, receiver) = bounded(0);
         let script = script.clone();
-        let task = task::spawn(async move {
+        thread::spawn(move || {
             let mut script_engine = ScriptEngine::new();
-            match script_engine.0.eval::<String>(script.as_str()) {
+            match sender.send(match script_engine.0.eval::<String>(script.as_str()) {
                 Ok(result) => result,
                 Err(e) => match &e {
                     EvalAltResult::ErrorMismatchOutputType(t, output) => match t.as_ref() {
@@ -49,16 +49,19 @@ impl ScriptEngine {
                     },
                     _ => format!("Script Error: {}", e),
                 },
+            }) {
+                Ok(_) => {}  // Send okay.
+                Err(_) => {} // Timed out.
             }
         });
-        future::timeout(Duration::from_millis(timeout_millis), task).await
+        receiver.recv_timeout(Duration::from_millis(timeout_millis)) // Catch whatever comes first, finish or timeout
     }
 }
 
 struct ScriptFunction {}
 
 impl ScriptFunction {
-    fn to_string<T: Display>(x: T) -> String {
+    fn string<T: Display>(x: T) -> String {
         format!("{}", x)
     }
 

@@ -188,7 +188,7 @@ impl Command {
              \"Don't count on it.\"]; \
              responses[floor(random() * len(responses))]\
              }}"
-                .to_string(),
+            .to_string(),
         )]
     }
 }
@@ -287,7 +287,7 @@ fn test_simple_script_command() {
 fn test_complex_script_command() {
     let command = Command::new(
         "!script".to_string(),
-        "Hi $user: {{\"message \" + to_string(2 + 2) + \" $user\"}}!".to_string(),
+        "Hi $user: {{\"message \" + string(2 + 2) + \" $user\"}}!".to_string(),
     );
     assert_eq!(
         "Hi foo: message 4 foo!".to_string(),
@@ -330,7 +330,7 @@ fn test_8ball() {
          \"Don't count on it.\"]; \
          responses[floor(random() * len(responses))]\
          }}"
-            .to_string(),
+        .to_string(),
     );
     for _ in 0..10 {
         let response = command
@@ -350,11 +350,11 @@ fn test_8ball() {
 
 #[test]
 fn test_infinite_loop() {
-    let command = Command::new(
-        "!loop".to_string(),
-        "{{loop{}}}".to_string(),
-    );
-    let response = command.respond(&Message::new("!loop".to_string())).unwrap().text;
+    let command = Command::new("!loop".to_string(), "{{loop{}}}".to_string());
+    let response = command
+        .respond(&Message::new("!loop".to_string()))
+        .unwrap()
+        .text;
     assert!(response.contains("Timeout"));
 }
 
@@ -364,11 +364,13 @@ fn test_d6() {
         "!d6".to_string(),
         "{{floor(random() * 6) + 1 * int(\"$1\")}}".to_string(),
     );
-    let response = command.respond(&Message::new("!d6".to_string())).unwrap().text;
+    let response = command
+        .respond(&Message::new("!d6".to_string()))
+        .unwrap()
+        .text;
     let n: i64 = response.parse().unwrap();
     assert!(n >= 1 && n <= 6);
 }
-
 
 #[test]
 fn test_coinflip() {
@@ -376,6 +378,9 @@ fn test_coinflip() {
         "!coinflip".to_string(),
         "{{if random() > 0.5 { \"Heads!\" } else { \"Tails!\" }}}".to_string(),
     );
-    let response = command.respond(&Message::new("!coinflip".to_string())).unwrap().text;
+    let response = command
+        .respond(&Message::new("!coinflip".to_string()))
+        .unwrap()
+        .text;
     assert!(response == "Heads!" || response == "Tails!");
 }
