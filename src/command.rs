@@ -1,5 +1,5 @@
 use crate::bot::{BotMessage, Message};
-use crate::script::ScriptEngine;
+use crate::script_runner;
 use logos::Logos;
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
@@ -140,7 +140,7 @@ impl Command {
                 }
                 Token::ScriptEnd => {
                     if in_script {
-                        let script_result = &ScriptEngine::run(&script);
+                        let script_result = &script_runner::run(&script);
                         accumulator = &mut response;
                         *accumulator += script_result;
                         in_script = false;
@@ -151,7 +151,7 @@ impl Command {
                 Token::ScriptEndAndExtra => {
                     if in_script {
                         *accumulator += "}";
-                        let script_result = &ScriptEngine::run(&script);
+                        let script_result = &script_runner::run(&script);
                         accumulator = &mut response;
                         *accumulator += script_result;
                         in_script = false;

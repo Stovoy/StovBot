@@ -3,9 +3,17 @@ name = "stovbot"
 version = "0.7.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
+default-run = "stovbot"
+
+[[bin]]
+name = "stovbot"
+path = "src/stovbot.rs"
+
+[[bin]]
+name = "script_engine"
+path = "src/script_engine.rs"
 
 [features]
-
 # Include the Iced UI.
 gui = ["iced", "iced_native", "iced_core"]
 

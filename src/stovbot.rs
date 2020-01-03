@@ -18,7 +18,7 @@ mod bot;
 mod command;
 mod db;
 mod discord;
-mod script;
+mod script_runner;
 mod special_command;
 mod twitch;
 
