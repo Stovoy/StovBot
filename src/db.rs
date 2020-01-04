@@ -1,12 +1,15 @@
-use crate::command::Command;
-use rusqlite::{params, Connection, Error, ErrorCode, Result, Row};
+use crate::command::{Command, Variable, VariableValue};
+use rusqlite::types::{FromSql, FromSqlError, ToSql, ToSqlOutput, Value, ValueRef};
+use rusqlite::{params, Connection, Error, ErrorCode, Row};
+use serde_json;
+use time;
 
 pub(crate) struct Database {
     connection: Connection,
 }
 
 impl Database {
-    pub(crate) fn new() -> Result<Database> {
+    pub(crate) fn new() -> Result<Database, Error> {
         let path = "./db.db3";
         let connection = Connection::open(&path)?;
 
@@ -16,23 +19,32 @@ impl Database {
     }
 
     #[cfg(test)]
-    fn new_in_memory() -> Result<Database> {
+    fn new_in_memory() -> Result<Database, Error> {
         let connection = Connection::open_in_memory()?;
         let database = Database { connection };
         database.migrate()?;
         Ok(database)
     }
 
-    fn migrate(&self) -> Result<()> {
-        self.connection.execute(
+    fn migrate(&self) -> Result<(), Error> {
+        let tables = [
             "CREATE TABLE IF NOT EXISTS command (
               id            INTEGER PRIMARY KEY AUTOINCREMENT,
               time_created  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
               trigger       TEXT NOT NULL UNIQUE,
               response      TEXT NOT NULL
-          )",
-            params![],
-        )?;
+            )",
+            "CREATE TABLE IF NOT EXISTS variable (
+              id            INTEGER PRIMARY KEY AUTOINCREMENT,
+              time_created  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              time_modified TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              name          TEXT NOT NULL UNIQUE,
+              value         TEXT NOT NULL
+            )",
+        ];
+        for table in tables.iter() {
+            self.connection.execute(table, params![])?;
+        }
 
         for command in Command::default_commands() {
             if let Err(error) = self.add_command(&command) {
@@ -44,9 +56,7 @@ impl Database {
                             return Err(error);
                         }
                     }
-                    _ => {
-                        return Err(error);
-                    }
+                    _ => return Err(error),
                 }
             }
         }
@@ -54,28 +64,28 @@ impl Database {
         Ok(())
     }
 
-    pub(crate) fn add_command(&self, command: &Command) -> Result<usize> {
+    pub(crate) fn add_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "INSERT INTO command (trigger, response) VALUES (?1, ?2)",
             params![command.trigger, command.response],
         )
     }
 
-    pub(crate) fn delete_command(&self, command: &Command) -> Result<usize> {
+    pub(crate) fn delete_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "DELETE FROM command WHERE trigger = ?1",
             params![command.trigger],
         )
     }
 
-    pub(crate) fn update_command(&self, command: &Command) -> Result<usize> {
+    pub(crate) fn update_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "UPDATE command SET response = ?2 WHERE trigger = ?1",
             params![command.trigger, command.response],
         )
     }
 
-    pub(crate) fn get_commands(&self) -> Result<Vec<Command>> {
+    pub(crate) fn get_commands(&self) -> Result<Vec<Command>, Error> {
         let mut statement = self
             .connection
             .prepare("SELECT id, time_created, trigger, response FROM command")?;
@@ -95,10 +105,51 @@ impl Database {
         }
         Ok(commands)
     }
+
+    pub(crate) fn get_variable(&self, name: String) -> Result<Variable, Error> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, time_created, time_modified, name, value \
+             FROM variable WHERE name = ?1",
+        )?;
+        statement.query_row(params![name], |row: &Row| {
+            Ok(Variable {
+                id: row.get(0)?,
+                time_created: row.get(1)?,
+                time_modified: row.get(2)?,
+                name: row.get(3)?,
+                value: row.get(4)?,
+            })
+        })
+    }
+
+    pub(crate) fn set_variable(&self, variable: &Variable) -> Result<usize, Error> {
+        self.connection.execute(
+            "INSERT INTO variable(name, value) VALUES(?1, ?2)
+             ON CONFLICT(name) DO UPDATE SET value = ?2, time_modified = ?3",
+            params![variable.name, variable.value, time::get_time()],
+        )
+    }
+}
+
+impl FromSql for VariableValue {
+    fn column_result(value: ValueRef<'_>) -> Result<Self, FromSqlError> {
+        match serde_json::from_str(value.as_str()?) {
+            Ok(result) => Ok(result),
+            Err(_) => Err(FromSqlError::InvalidType),
+        }
+    }
+}
+
+impl ToSql for VariableValue {
+    fn to_sql(&self) -> Result<ToSqlOutput<'_>, Error> {
+        Ok(ToSqlOutput::Owned(Value::Text(
+            serde_json::to_string(self).unwrap(),
+        )))
+    }
 }
 
 #[test]
-fn test_add_command() -> Result<()> {
+fn test_add_command() -> Result<(), Error> {
     let database = Database::new_in_memory()?;
     database.add_command(&Command::new(
         "!test".to_string(),
@@ -113,5 +164,18 @@ fn test_add_command() -> Result<()> {
         }
     }
     assert!(found);
+    Ok(())
+}
+
+#[test]
+fn test_set_variable() -> Result<(), Error> {
+    let database = Database::new_in_memory()?;
+    database.set_variable(&Variable::new(
+        "variable".to_string(),
+        VariableValue::Text("value".to_string()),
+    ))?;
+    let variable = database.get_variable("variable".to_string())?;
+    println!("{:?}", variable);
+    assert_eq!(variable.value, VariableValue::Text("value".to_string()));
     Ok(())
 }

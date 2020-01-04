@@ -25,13 +25,13 @@ pub(crate) fn run(script: &String) -> String {
 }
 
 fn eval(script: &String) -> Result<String, ScriptRunnerError> {
-    let mut script_engine_path = env::current_exe()?;
-    script_engine_path.pop();
-    script_engine_path.push("script_engine");
-    let output = Command::new(script_engine_path)
-        .args(&[script])
-        .output()
-        .unwrap();
+    let mut path = env::current_exe()?;
+    path.pop();
+    if path.ends_with("deps") {
+        path.pop();
+    }
+    path.push("script_engine");
+    let output = Command::new(path).args(&[script]).output().unwrap();
     match output.status.code().unwrap() {
         100 => Err(ScriptRunnerError::TimeoutError),
         _ => Ok(output.stdout.iter().map(|c| *c as char).collect::<String>()),

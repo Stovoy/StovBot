@@ -37,7 +37,7 @@ fn main() {
     });
     match receiver.recv_timeout(timeout) {
         Ok(result) => {
-            println!("{}", result);
+            print!("{}", result);
             exit(0);
         }
         Err(_) => {

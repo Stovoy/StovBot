@@ -1,9 +1,18 @@
 use crate::bot::{BotMessage, Message};
 use crate::script_runner;
 use logos::Logos;
+use serde;
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
 use time::Timespec;
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "Timespec")]
+struct TimespecDef {
+    sec: i64,
+    nsec: i32,
+}
 
 #[derive(Logos, Debug, PartialEq)]
 enum Token {
@@ -63,6 +72,43 @@ pub(crate) struct Command {
     pub(crate) trigger: String,
     pub(crate) response: String,
     pub(crate) actor: Option<Actor>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Variable {
+    pub(crate) id: i32,
+    #[serde(with = "TimespecDef")]
+    pub(crate) time_created: Timespec,
+    #[serde(with = "TimespecDef")]
+    pub(crate) time_modified: Timespec,
+    pub(crate) name: String,
+    pub(crate) value: VariableValue,
+}
+
+impl Variable {
+    pub(crate) fn new(name: String, value: VariableValue) -> Variable {
+        Variable {
+            id: 0,
+            time_created: time::empty_tm().to_timespec(),
+            time_modified: time::empty_tm().to_timespec(),
+            name,
+            value,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum VariableValue {
+    Text(String),
+    Integer(i32),
+    ArrayOfStrings(Vec<ArrayString>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ArrayString {
+    #[serde(with = "TimespecDef")]
+    pub(crate) time_created: Timespec,
+    pub(crate) value: String,
 }
 
 impl Command {
@@ -362,7 +408,7 @@ fn test_infinite_loop() {
 fn test_d6() {
     let command = Command::new(
         "!d6".to_string(),
-        "{{floor(random() * 6) + 1 * int(\"$1\")}}".to_string(),
+        "{{let n = int(\"$1\"); if n == 0 { n = 1 } let i = 0; let d = 0; while i < n { i += 1; d += floor(random() * 6) + 1 } d}}".to_string(),
     );
     let response = command
         .respond(&Message::new("!d6".to_string()))
