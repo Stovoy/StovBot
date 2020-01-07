@@ -46,7 +46,9 @@ fn main() -> Result<(), ConnectError> {
 
 #[cfg(not(feature = "gui"))]
 async fn run() -> Result<(), ConnectError> {
+    println!("Connecting...");
     let connected_state = connect().await?;
+    println!("Connected");
     let stream: BoxStream<'static, Event> = Pin::from(Box::from(connected_state.boxed()));
     stream
         .for_each(|event| {
@@ -86,10 +88,12 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
 
     let shared_state = Arc::new(Mutex::new(SharedState { waker: None }));
 
+    let channel_size = 1024;
+
     let mut twitch_event_senders = Vec::new();
     let mut twitch_event_receivers = Vec::new();
     for _ in 0..2 {
-        let (s, r) = channel::bounded(10);
+        let (s, r) = channel::bounded(channel_size);
         twitch_event_senders.push(s);
         twitch_event_receivers.push(r);
     }
@@ -97,21 +101,22 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let mut discord_event_senders = Vec::new();
     let mut discord_event_receivers = Vec::new();
     for _ in 0..2 {
-        let (s, r) = channel::bounded(10);
+        let (s, r) = channel::bounded(channel_size);
         discord_event_senders.push(s);
         discord_event_receivers.push(r);
     }
 
-    let (bot_event_sender, bot_event_receiver) = channel::bounded(0);
+    let (bot_event_sender, bot_event_receiver) = channel::bounded(channel_size);
 
-    let (twitch_client, twitch_writer) = twitch::connect(secrets.twitch_token);
     let thread_shared_state = shared_state.clone();
+    let twitch_token = secrets.twitch_token;
     thread::spawn(|| {
+        let client = twitch::connect(twitch_token);
         let handler = twitch::Handler {
             senders: twitch_event_senders,
             shared_state: thread_shared_state,
         };
-        handler.listen(twitch_client);
+        handler.listen(client);
     });
 
     let thread_shared_state = shared_state.clone();
@@ -127,12 +132,13 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let bot_twitch_event_receiver = twitch_event_receivers[0].clone();
     let bot_discord_event_receiver = discord_event_receivers[0].clone();
 
+    let thread_shared_state = shared_state.clone();
     thread::spawn(|| {
         match Bot::new(
             bot_event_sender,
             bot_twitch_event_receiver,
             bot_discord_event_receiver,
-            twitch_writer,
+            thread_shared_state,
         ) {
             Ok(mut stovbot) => {
                 stovbot.run();
@@ -188,10 +194,41 @@ impl Debug for Event {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         f.write_str(
             match self {
-                Event::BotEvent(_e) => format!("bot event"),
+                Event::BotEvent(e) => match e {
+                    BotEvent::LoadCommand(command) => {
+                        format!("Load Command: {}: {}", command.trigger, command.response)
+                    }
+                    BotEvent::AddCommand(command, user) => format!(
+                        "Add Command by {}: {}: {}",
+                        user.username, command.trigger, command.response
+                    ),
+                    BotEvent::EditCommand(command, user) => format!(
+                        "Edit Command by {}: {}: {}",
+                        user.username, command.trigger, command.response
+                    ),
+                    BotEvent::DeleteCommand(command, user) => format!(
+                        "Delete Command by {}: {}: {}",
+                        user.username, command.trigger, command.response
+                    ),
+                    BotEvent::LoadVariable(variable) => {
+                        format!("Load Variable: {}: {}", variable.name, variable.value)
+                    }
+                    BotEvent::AddVariable(variable, user) => format!(
+                        "Add Variable by {}: {}: {}",
+                        user.username, variable.name, variable.value
+                    ),
+                    BotEvent::EditVariable(variable, user) => format!(
+                        "Edit Variable by {}: {}: {}",
+                        user.username, variable.name, variable.value
+                    ),
+                    BotEvent::DeleteVariable(variable, user) => format!(
+                        "Delete Variable by {}: {}: {}",
+                        user.username, variable.name, variable.value
+                    ),
+                },
                 Event::TwitchEvent(e) => match e {
-                    TwitchEvent::Ready => "Twitch - Ready".to_string(),
-                    TwitchEvent::PrivMsg(msg) => {
+                    TwitchEvent::Ready(_) => "Twitch - Ready".to_string(),
+                    TwitchEvent::PrivMsg(_, msg) => {
                         format!("{}: {}", msg.user(), msg.message()).to_string()
                     }
                 },

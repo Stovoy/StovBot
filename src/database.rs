@@ -100,15 +100,7 @@ impl Database {
         let mut statement = self
             .connection
             .prepare("SELECT id, time_created, trigger, response FROM command")?;
-        let commands_iter = statement.query_map(params![], |row: &Row| {
-            Ok(Command {
-                id: row.get(0)?,
-                time_created: row.get(1)?,
-                trigger: row.get(2)?,
-                response: row.get(3)?,
-                actor: None,
-            })
-        })?;
+        let commands_iter = statement.query_map(params![], |row: &Row| self.map_command(row))?;
 
         let mut commands = Vec::new();
         for command in commands_iter {
@@ -117,20 +109,25 @@ impl Database {
         Ok(commands)
     }
 
+    pub fn get_variables(&self) -> Result<Vec<Variable>, Error> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, time_created, time_modified, name, value FROM variable")?;
+        let variables_iter = statement.query_map(params![], |row: &Row| self.map_variable(row))?;
+
+        let mut variables = Vec::new();
+        for variable in variables_iter {
+            variables.push(variable.unwrap());
+        }
+        Ok(variables)
+    }
+
     pub fn get_variable(&self, name: &String) -> Result<Variable, Error> {
         let mut statement = self.connection.prepare(
             "SELECT id, time_created, time_modified, name, value \
              FROM variable WHERE name = ?1",
         )?;
-        statement.query_row(params![name], |row: &Row| {
-            Ok(Variable {
-                id: row.get(0)?,
-                time_created: row.get(1)?,
-                time_modified: row.get(2)?,
-                name: row.get(3)?,
-                value: row.get(4)?,
-            })
-        })
+        statement.query_row(params![name], |row: &Row| self.map_variable(row))
     }
 
     pub fn set_variable(&self, variable: &Variable) -> Result<usize, Error> {
@@ -139,6 +136,26 @@ impl Database {
              ON CONFLICT(name) DO UPDATE SET value = ?2, time_modified = ?3",
             params![variable.name, variable.value, time::get_time()],
         )
+    }
+
+    fn map_command(&self, row: &Row) -> Result<Command, Error> {
+        Ok(Command {
+            id: row.get(0)?,
+            time_created: row.get(1)?,
+            trigger: row.get(2)?,
+            response: row.get(3)?,
+            actor: None,
+        })
+    }
+
+    fn map_variable(&self, row: &Row) -> Result<Variable, Error> {
+        Ok(Variable {
+            id: row.get(0)?,
+            time_created: row.get(1)?,
+            time_modified: row.get(2)?,
+            name: row.get(3)?,
+            value: row.get(4)?,
+        })
     }
 }
 

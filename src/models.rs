@@ -1,9 +1,23 @@
+use serde::export::fmt::Error;
+use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
 use serenity::model::channel::Message as DiscordMessage;
 use serenity::prelude::Context as DiscordContext;
+use std::fmt::Debug;
+use std::fmt::Display;
 use time::Timespec;
+use twitchchat::Writer as TwitchWriter;
 
-pub type Actor = fn(&Command, &Message) -> Result<Action, ActionError>;
+// Note: Wrapped in struct so that we can implement Debug on it.
+#[derive(Clone)]
+pub struct Actor(pub fn(&Command, &Message) -> Result<Action, ActionError>);
+
+impl Debug for Actor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        f.write_str("<Actor>")?;
+        Ok(())
+    }
+}
 
 pub enum Action {
     AddCommand(Command),
@@ -21,7 +35,7 @@ pub enum ActionError {
     BadCommandTriggerPrefix,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Command {
     pub id: i32,
     pub time_created: Timespec,
@@ -36,6 +50,7 @@ pub struct Message {
     pub source: Source,
 }
 
+#[derive(Debug, Clone)]
 pub struct User {
     pub username: String,
 }
@@ -43,7 +58,7 @@ pub struct User {
 pub enum Source {
     #[cfg(test)]
     None,
-    Twitch(String),
+    Twitch(TwitchWriter, String),
     Discord(DiscordContext, DiscordMessage),
 }
 
@@ -114,6 +129,20 @@ impl Variable {
 pub enum VariableValue {
     Text(String),
     StringList(Vec<ArrayString>),
+}
+
+impl Display for VariableValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            VariableValue::Text(value) => {
+                f.write_str(value)?;
+            }
+            VariableValue::StringList(value) => {
+                f.write_str(format!("{:?}", value).as_ref())?;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

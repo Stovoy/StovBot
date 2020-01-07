@@ -1,21 +1,21 @@
-use crate::models::{Action, ActionError, Command, Message};
+use crate::models::{Action, ActionError, Actor, Command, Message};
 
 pub fn commands() -> Vec<Command> {
     vec![
         Command::new_with_actor(
             "!command add".to_string(),
             "Your command has been added".to_string(),
-            Some(add_command),
+            Some(Actor(add_command)),
         ),
         Command::new_with_actor(
             "!command delete".to_string(),
             "Your command has been deleted".to_string(),
-            Some(delete_command),
+            Some(Actor(delete_command)),
         ),
         Command::new_with_actor(
             "!command edit".to_string(),
             "Your command has been edited".to_string(),
-            Some(edit_command),
+            Some(Actor(edit_command)),
         ),
     ]
 }

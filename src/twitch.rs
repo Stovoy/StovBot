@@ -5,7 +5,7 @@ use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use twitchchat::*;
 
-pub fn connect(token: String) -> (Client<TcpStream>, Writer) {
+pub fn connect(token: String) -> Client<TcpStream> {
     env_logger::init().unwrap();
 
     let client = twitchchat::connect(
@@ -21,14 +21,13 @@ pub fn connect(token: String) -> (Client<TcpStream>, Writer) {
     .expect("failed to connect to twitch")
     .filter::<commands::PrivMsg>();
 
-    let writer = client.writer();
-    (client, writer)
+    client
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum TwitchEvent {
-    Ready,
-    PrivMsg(commands::PrivMsg),
+    Ready(Writer),
+    PrivMsg(Writer, commands::PrivMsg),
 }
 
 pub struct Handler {
@@ -48,13 +47,14 @@ impl Handler {
     }
 
     pub fn listen(&self, client: Client<TcpStream>) {
+        let writer = client.writer();
         for event in client {
             match event {
                 Event::TwitchReady(_) => {
-                    self.send_event(TwitchEvent::Ready);
+                    self.send_event(TwitchEvent::Ready(writer.clone()));
                 }
                 Event::Message(Message::PrivMsg(msg)) => {
-                    self.send_event(TwitchEvent::PrivMsg(msg));
+                    self.send_event(TwitchEvent::PrivMsg(writer.clone(), msg));
                 }
                 Event::Message(Message::Irc(_)) => {}
                 Event::Error(err) => {

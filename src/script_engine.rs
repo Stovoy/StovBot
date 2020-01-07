@@ -143,6 +143,9 @@ impl ScriptFunction {
         }
     }
 
+    // TODO: How to get these variable modification events across process to StovBot?
+    // Want to serialize all these events and send them on stdout along with script output,
+    // which means we'll need to store them somehow.
     fn get(name: String) -> String {
         let database = Database::connect().unwrap();
         match database.get_variable(&name) {

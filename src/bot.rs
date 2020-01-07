@@ -2,34 +2,45 @@ use crate::command::CommandExt;
 use crate::command::Commands;
 use crate::database::Database;
 use crate::discord::DiscordEvent;
-use crate::models::{Action, ActionError, Command, Message, Source, User};
+use crate::models::{Action, ActionError, Command, Message, Source, User, Variable};
 use crate::special_command;
 use crate::twitch::TwitchEvent;
 use crossbeam::channel::{select, Receiver, Sender};
 use futures::task::Waker;
 use rusqlite::Error;
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
-use twitchchat::Writer;
+use std::sync::{Arc, Mutex};
 
 pub struct SharedState {
     pub waker: Option<Waker>,
 }
 
 #[derive(Debug, Clone)]
-pub struct BotEvent {}
+pub enum BotEvent {
+    // On initial load from the database.
+    LoadCommand(Command),
+    // User command actions.
+    AddCommand(Command, User),
+    EditCommand(Command, User),
+    DeleteCommand(Command, User),
+
+    // On initial load from the database.
+    LoadVariable(Variable),
+    // User variable actions.
+    AddVariable(Variable, User),
+    EditVariable(Variable, User),
+    DeleteVariable(Variable, User),
+}
 
 pub struct Bot {
     pub username: String,
     pub commands: Commands,
 
-    #[allow(dead_code)]
     pub bot_event_sender: Sender<BotEvent>,
-
     pub twitch_event_receiver: Receiver<TwitchEvent>,
     pub discord_event_receiver: Receiver<DiscordEvent>,
-    pub twitch_writer: Writer,
+    pub shared_state: Arc<Mutex<SharedState>>,
 
-    #[allow(dead_code)]
     pub database: Database,
 }
 
@@ -38,18 +49,32 @@ impl Bot {
         bot_event_sender: Sender<BotEvent>,
         twitch_event_receiver: Receiver<TwitchEvent>,
         discord_event_receiver: Receiver<DiscordEvent>,
-        twitch_writer: Writer,
+        shared_state: Arc<Mutex<SharedState>>,
     ) -> Result<Bot, Error> {
         let database = Database::new()?;
         let mut commands = special_command::commands();
         commands.append(database.get_commands()?.as_mut());
+        for command in commands.iter() {
+            send_event(
+                &bot_event_sender,
+                &shared_state,
+                BotEvent::LoadCommand(command.clone()),
+            );
+        }
+        for variable in database.get_variables()? {
+            send_event(
+                &bot_event_sender,
+                &shared_state,
+                BotEvent::LoadVariable(variable),
+            );
+        }
         let stovbot = Bot {
             username: "StovBot".to_string(),
             commands: Commands::new(commands),
             bot_event_sender,
             twitch_event_receiver,
             discord_event_receiver,
-            twitch_writer,
+            shared_state,
             database,
         };
         Ok(stovbot)
@@ -71,16 +96,16 @@ impl Bot {
             let message = select! {
                 recv(self.twitch_event_receiver) -> msg => match msg {
                     Ok(event) => match event {
-                        TwitchEvent::Ready => {
-                            self.twitch_writer.join("stovoy").unwrap();
+                        TwitchEvent::Ready(writer) => {
+                            writer.join("stovoy").unwrap();
                             None
                         }
-                        TwitchEvent::PrivMsg(msg) => Some(Message {
+                        TwitchEvent::PrivMsg(writer, msg) => Some(Message {
                             sender: User {
                                 username: msg.user().to_string(),
                             },
                             text: msg.message().to_string(),
-                            source: Source::Twitch("stovoy".to_string()),
+                            source: Source::Twitch(writer, "stovoy".to_string()),
                         })
                     }
                     Err(_) => None,
@@ -123,9 +148,9 @@ impl Bot {
         let response = match triggered_command {
             None => None,
             Some(command) => {
-                let action_error = match command.actor {
+                let action_error = match &command.actor {
                     None => None,
-                    Some(actor) => match actor(&command, message) {
+                    Some(actor) => match actor.0(&command, message) {
                         Ok(action) => {
                             let action_error = match &action {
                                 Action::AddCommand(command) => {
@@ -171,29 +196,37 @@ impl Bot {
             }
         };
 
-        match deferred_action {
-            None => {}
+        let event = match deferred_action {
+            None => None,
             Some(deferred_action) => match deferred_action {
                 Action::AddCommand(command) => {
                     if let Err(e) = self.database.add_command(&command) {
                         println!("Error adding command {}: {}", command.trigger, e)
                     }
                     self.commands.update_command(&command);
+                    Some(BotEvent::AddCommand(command, message.sender.clone()))
                 }
                 Action::DeleteCommand(command) => {
                     if let Err(e) = self.database.delete_command(&command) {
                         println!("Error deleting command {}: {}", command.trigger, e)
                     }
                     self.commands.delete_command(&command);
+                    Some(BotEvent::DeleteCommand(command, message.sender.clone()))
                 }
                 Action::EditCommand(command) => {
                     if let Err(e) = self.database.update_command(&command) {
                         println!("Error updating command {}: {}", command.trigger, e)
                     }
                     self.commands.update_command(&command);
+                    Some(BotEvent::EditCommand(command, message.sender.clone()))
                 }
             },
-        }
+        };
+
+        match event {
+            None => {}
+            Some(event) => self.send_event(event),
+        };
 
         response
     }
@@ -202,8 +235,8 @@ impl Bot {
         match source {
             #[cfg(test)]
             Source::None => {}
-            Source::Twitch(channel) => {
-                self.twitch_writer.send(channel, text).unwrap();
+            Source::Twitch(writer, channel) => {
+                writer.send(channel, text).unwrap();
             }
             Source::Discord(ctx, msg) => {
                 let response = DiscordMessageBuilder::new().push(text).build();
@@ -212,6 +245,10 @@ impl Bot {
                 }
             }
         }
+    }
+
+    fn send_event(&self, event: BotEvent) {
+        send_event(&self.bot_event_sender, &self.shared_state, event)
     }
 }
 
@@ -238,5 +275,16 @@ impl Message {
             let (_, text) = self.text.split_at(trigger.len() + 1);
             text
         }
+    }
+}
+
+fn send_event(sender: &Sender<BotEvent>, shared_state: &Arc<Mutex<SharedState>>, event: BotEvent) {
+    match sender.send(event) {
+        Ok(_) => {}
+        Err(e) => println!("Error sending event: {}", e),
+    };
+    let mut shared_state = shared_state.lock().unwrap();
+    if let Some(waker) = shared_state.waker.take() {
+        waker.wake()
     }
 }
