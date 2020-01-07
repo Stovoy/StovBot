@@ -1,4 +1,4 @@
-use crate::SharedState;
+use crate::bot::SharedState;
 use crossbeam::channel;
 use env_logger;
 use std::net::TcpStream;

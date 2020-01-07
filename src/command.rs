@@ -1,18 +1,14 @@
-use crate::bot::{BotMessage, Message};
+use crate::bot::BotMessage;
+use crate::models::{Command, Message};
 use crate::script_runner;
 use logos::Logos;
-use serde;
-use serde::{Deserialize, Serialize};
 use std::collections::hash_map::Values;
 use std::collections::HashMap;
-use time::Timespec;
 
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "Timespec")]
-struct TimespecDef {
-    sec: i64,
-    nsec: i32,
-}
+#[cfg(test)]
+use crate::database;
+#[cfg(test)]
+use crate::models::{Variable, VariableValue};
 
 #[derive(Logos, Debug, PartialEq)]
 enum Token {
@@ -47,102 +43,28 @@ enum Token {
     Other,
 }
 
-type Actor = fn(&Command, &Message) -> Result<Action, ActionError>;
-
-pub(crate) enum Action {
-    AddCommand(Command),
-    DeleteCommand(Command),
-    EditCommand(Command),
+pub trait CommandExt {
+    fn matches_trigger(&self, message: &Message) -> bool;
+    #[cfg(test)]
+    fn respond(&self, message: &Message) -> Option<BotMessage>;
+    fn respond_no_check(&self, message: &Message) -> BotMessage;
+    fn parse(&self, message: &Message) -> String;
 }
 
-#[derive(Debug)]
-pub(crate) enum ActionError {
-    CommandAlreadyExists,
-    CommandDoesNotExist,
-    CannotDeleteBuiltInCommand,
-    CannotModifyBuiltInCommand,
-    BadCommand(String),
-    BadCommandTriggerPrefix,
-}
-
-#[derive(Clone)]
-pub(crate) struct Command {
-    pub(crate) id: i32,
-    pub(crate) time_created: Timespec,
-    pub(crate) trigger: String,
-    pub(crate) response: String,
-    pub(crate) actor: Option<Actor>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Variable {
-    pub(crate) id: i32,
-    #[serde(with = "TimespecDef")]
-    pub(crate) time_created: Timespec,
-    #[serde(with = "TimespecDef")]
-    pub(crate) time_modified: Timespec,
-    pub(crate) name: String,
-    pub(crate) value: VariableValue,
-}
-
-impl Variable {
-    pub(crate) fn new(name: String, value: VariableValue) -> Variable {
-        Variable {
-            id: 0,
-            time_created: time::empty_tm().to_timespec(),
-            time_modified: time::empty_tm().to_timespec(),
-            name,
-            value,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) enum VariableValue {
-    Text(String),
-    Integer(i32),
-    ArrayOfStrings(Vec<ArrayString>),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ArrayString {
-    #[serde(with = "TimespecDef")]
-    pub(crate) time_created: Timespec,
-    pub(crate) value: String,
-}
-
-impl Command {
-    pub(crate) fn new(trigger: String, response: String) -> Command {
-        Command::new_with_actor(trigger, response, None)
-    }
-
-    pub(crate) fn new_with_actor(
-        trigger: String,
-        response: String,
-        actor: Option<Actor>,
-    ) -> Command {
-        Command {
-            id: 0,
-            time_created: time::empty_tm().to_timespec(),
-            trigger,
-            response,
-            actor,
-        }
-    }
-
-    pub(crate) fn matches_trigger(&self, message: &Message) -> bool {
+impl CommandExt for Command {
+    fn matches_trigger(&self, message: &Message) -> bool {
         message.text == self.trigger || message.text.starts_with(&format!("{} ", self.trigger))
     }
 
     #[cfg(test)]
-    pub(crate) fn respond(&self, message: &Message) -> Option<BotMessage> {
+    fn respond(&self, message: &Message) -> Option<BotMessage> {
         match self.matches_trigger(message) {
             true => Some(self.respond_no_check(message)),
             false => None,
         }
     }
 
-    pub(crate) fn respond_no_check(&self, message: &Message) -> BotMessage {
+    fn respond_no_check(&self, message: &Message) -> BotMessage {
         let response = self.parse(&message);
         BotMessage { text: response }
     }
@@ -218,33 +140,22 @@ impl Command {
             lexer.advance();
         }
 
-        return response;
-    }
+        if in_script {
+            // Script was never ended.
+            accumulator = &mut response;
+            *accumulator += &script;
+        }
 
-    pub(crate) fn default_commands() -> Vec<Command> {
-        vec![Command::new(
-            "!8ball".to_string(),
-            "🎱 {{\
-             let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
-             \"You may rely on it.\", \"Concentrate and ask again...\", \
-             \"Outlook not so good...\", \"It is decidedly so!\", \
-             \"Better not tell you.\", \"Very doubtful.\", \"Yes - Definitely!\", \
-             \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
-             \"Outlook good.\", \
-             \"Don't count on it.\"]; \
-             responses[floor(random() * len(responses))]\
-             }}"
-            .to_string(),
-        )]
+        return response;
     }
 }
 
-pub(crate) struct Commands {
+pub struct Commands {
     commands: HashMap<String, Command>,
 }
 
 impl Commands {
-    pub(crate) fn new(commands: Vec<Command>) -> Commands {
+    pub fn new(commands: Vec<Command>) -> Commands {
         let mut commands_map = HashMap::new();
         for command in commands {
             commands_map.insert(command.trigger.clone(), command);
@@ -254,20 +165,20 @@ impl Commands {
         }
     }
 
-    pub(crate) fn iter(&self) -> Values<'_, String, Command> {
+    pub fn iter(&self) -> Values<'_, String, Command> {
         self.commands.values()
     }
 
-    pub(crate) fn contains(&self, command: &Command) -> bool {
+    pub fn contains(&self, command: &Command) -> bool {
         self.commands.contains_key(&command.trigger)
     }
 
-    pub(crate) fn update_command(&mut self, command: &Command) {
+    pub fn update_command(&mut self, command: &Command) {
         self.commands
             .insert(command.trigger.clone(), command.clone());
     }
 
-    pub(crate) fn delete_command(&mut self, command: &Command) {
+    pub fn delete_command(&mut self, command: &Command) {
         self.commands.remove(&command.trigger);
     }
 }
@@ -429,4 +340,29 @@ fn test_coinflip() {
         .unwrap()
         .text;
     assert!(response == "Heads!" || response == "Tails!");
+}
+
+#[test]
+fn test_counter() -> Result<(), rusqlite::Error> {
+    database::with_test_db(|connection| {
+        connection.set_variable(&Variable::new(
+            "count".to_string(),
+            VariableValue::Text("0".to_string()),
+        ))?;
+        let command = Command::new(
+            "!count".to_string(),
+            "{{let count = get(\"count\"); count += 1; set(\"count\", count); count}}".to_string(),
+        );
+        let response = command
+            .respond(&Message::new("!count".to_string()))
+            .unwrap()
+            .text;
+        assert_eq!(response, "1");
+        let response = command
+            .respond(&Message::new("!count".to_string()))
+            .unwrap()
+            .text;
+        assert_eq!(response, "2");
+        Ok(())
+    })
 }

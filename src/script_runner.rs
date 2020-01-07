@@ -4,6 +4,7 @@ use std::process::Command;
 
 enum ScriptRunnerError {
     TimeoutError,
+    CrashError,
     IOError(Error),
 }
 
@@ -13,14 +14,17 @@ impl From<Error> for ScriptRunnerError {
     }
 }
 
-pub(crate) fn run(script: &String) -> String {
-    let millis = 1000;
+pub fn run(script: &String) -> String {
     match eval(script) {
         Ok(result) => {
             println!("{}", result);
             result
         }
-        Err(_) => format!("Script Error: Timeout after {} seconds", millis / 1000),
+        Err(e) => match e {
+            ScriptRunnerError::TimeoutError => format!("Script Error: Timeout"),
+            ScriptRunnerError::CrashError => format!("Script Error: Crash"),
+            ScriptRunnerError::IOError(_) => format!("Script Error: IO"),
+        },
     }
 }
 
@@ -34,6 +38,7 @@ fn eval(script: &String) -> Result<String, ScriptRunnerError> {
     let output = Command::new(path).args(&[script]).output().unwrap();
     match output.status.code().unwrap() {
         100 => Err(ScriptRunnerError::TimeoutError),
+        128 => Err(ScriptRunnerError::CrashError),
         _ => Ok(output.stdout.iter().map(|c| *c as char).collect::<String>()),
     }
 }

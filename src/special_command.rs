@@ -1,7 +1,6 @@
-use crate::bot::Message;
-use crate::command::{Action, ActionError, Command};
+use crate::models::{Action, ActionError, Command, Message};
 
-pub(crate) fn commands() -> Vec<Command> {
+pub fn commands() -> Vec<Command> {
     vec![
         Command::new_with_actor(
             "!command add".to_string(),

@@ -1,35 +1,40 @@
-use crate::command::{Action, ActionError, Command, Commands};
-use crate::db::Database;
+use crate::command::CommandExt;
+use crate::command::Commands;
+use crate::database::Database;
 use crate::discord::DiscordEvent;
+use crate::models::{Action, ActionError, Command, Message, Source, User};
 use crate::special_command;
 use crate::twitch::TwitchEvent;
 use crossbeam::channel::{select, Receiver, Sender};
+use futures::task::Waker;
 use rusqlite::Error;
-use serenity::model::channel::Message as DiscordMessage;
-use serenity::prelude::Context as DiscordContext;
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
 use twitchchat::Writer;
+
+pub struct SharedState {
+    pub waker: Option<Waker>,
+}
 
 #[derive(Debug, Clone)]
 pub struct BotEvent {}
 
 pub struct Bot {
-    pub(crate) username: String,
-    pub(crate) commands: Commands,
+    pub username: String,
+    pub commands: Commands,
 
     #[allow(dead_code)]
-    pub(crate) bot_event_sender: Sender<BotEvent>,
+    pub bot_event_sender: Sender<BotEvent>,
 
-    pub(crate) twitch_event_receiver: Receiver<TwitchEvent>,
-    pub(crate) discord_event_receiver: Receiver<DiscordEvent>,
-    pub(crate) twitch_writer: Writer,
+    pub twitch_event_receiver: Receiver<TwitchEvent>,
+    pub discord_event_receiver: Receiver<DiscordEvent>,
+    pub twitch_writer: Writer,
 
     #[allow(dead_code)]
-    pub(crate) database: Database,
+    pub database: Database,
 }
 
 impl Bot {
-    pub(crate) fn new(
+    pub fn new(
         bot_event_sender: Sender<BotEvent>,
         twitch_event_receiver: Receiver<TwitchEvent>,
         discord_event_receiver: Receiver<DiscordEvent>,
@@ -61,7 +66,7 @@ impl Bot {
                 .is_some()
     }
 
-    pub(crate) fn run(&mut self) {
+    pub fn run(&mut self) {
         loop {
             let message = select! {
                 recv(self.twitch_event_receiver) -> msg => match msg {
@@ -211,25 +216,12 @@ impl Bot {
 }
 
 pub struct BotMessage {
-    pub(crate) text: String,
-}
-
-pub struct Message {
-    pub(crate) sender: User,
-    pub(crate) text: String,
-    pub(crate) source: Source,
-}
-
-pub(crate) enum Source {
-    #[cfg(test)]
-    None,
-    Twitch(String),
-    Discord(DiscordContext, DiscordMessage),
+    pub text: String,
 }
 
 impl Message {
     #[cfg(test)]
-    pub(crate) fn new(text: String) -> Message {
+    pub fn new(text: String) -> Message {
         Message {
             sender: User {
                 username: "foo".to_string(),
@@ -239,7 +231,7 @@ impl Message {
         }
     }
 
-    pub(crate) fn after_trigger(&self, trigger: &String) -> &str {
+    pub fn after_trigger(&self, trigger: &String) -> &str {
         if trigger.len() + 1 > self.text.len() {
             ""
         } else {
@@ -247,8 +239,4 @@ impl Message {
             text
         }
     }
-}
-
-pub(crate) struct User {
-    pub(crate) username: String,
 }

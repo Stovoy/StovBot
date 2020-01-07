@@ -1,9 +1,8 @@
-use bot::Bot;
-use bot::BotEvent;
+use bot::{Bot, BotEvent, SharedState};
 use crossbeam::channel;
 use crossbeam::channel::Receiver;
 use discord::DiscordEvent;
-use futures::task::{Context, Poll, Waker};
+use futures::task::{Context, Poll};
 use futures::Stream;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
@@ -16,8 +15,9 @@ use twitch::TwitchEvent;
 
 mod bot;
 mod command;
-mod db;
+pub mod database;
 mod discord;
+pub mod models;
 mod script_runner;
 mod special_command;
 mod twitch;
@@ -75,10 +75,6 @@ impl Debug for ConnectedState {
     fn fmt(&self, _: &mut Formatter<'_>) -> Result<(), Error> {
         Ok(())
     }
-}
-
-pub struct SharedState {
-    pub waker: Option<Waker>,
 }
 
 async fn connect() -> Result<ConnectedState, ConnectError> {

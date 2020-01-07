@@ -1,4 +1,4 @@
-use crate::SharedState;
+use crate::bot::SharedState;
 use crossbeam::channel;
 use serenity::{
     model::{channel::Message, gateway::Ready},

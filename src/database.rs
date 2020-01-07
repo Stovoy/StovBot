@@ -1,19 +1,30 @@
-use crate::command::{Command, Variable, VariableValue};
+use crate::models::{Command, Variable, VariableValue};
 use rusqlite::types::{FromSql, FromSqlError, ToSql, ToSqlOutput, Value, ValueRef};
 use rusqlite::{params, Connection, Error, ErrorCode, Row};
 use serde_json;
+use std::env;
 use time;
 
-pub(crate) struct Database {
+#[cfg(test)]
+use rand::Rng;
+
+pub struct Database {
     connection: Connection,
 }
 
 impl Database {
-    pub(crate) fn new() -> Result<Database, Error> {
-        let path = "./db.db3";
+    pub fn connect() -> Result<Database, Error> {
+        // TODO: How to set an env var across all tests to default to in-memory?
+        let path = match env::var("WITH_TEST_DATABASE") {
+            Ok(value) => value,
+            Err(_) => "./db.db3".to_string(),
+        };
         let connection = Connection::open(&path)?;
+        Ok(Database { connection })
+    }
 
-        let database = Database { connection };
+    pub fn new() -> Result<Database, Error> {
+        let database = Database::connect()?;
         database.migrate()?;
         Ok(database)
     }
@@ -64,28 +75,28 @@ impl Database {
         Ok(())
     }
 
-    pub(crate) fn add_command(&self, command: &Command) -> Result<usize, Error> {
+    pub fn add_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "INSERT INTO command (trigger, response) VALUES (?1, ?2)",
             params![command.trigger, command.response],
         )
     }
 
-    pub(crate) fn delete_command(&self, command: &Command) -> Result<usize, Error> {
+    pub fn delete_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "DELETE FROM command WHERE trigger = ?1",
             params![command.trigger],
         )
     }
 
-    pub(crate) fn update_command(&self, command: &Command) -> Result<usize, Error> {
+    pub fn update_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "UPDATE command SET response = ?2 WHERE trigger = ?1",
             params![command.trigger, command.response],
         )
     }
 
-    pub(crate) fn get_commands(&self) -> Result<Vec<Command>, Error> {
+    pub fn get_commands(&self) -> Result<Vec<Command>, Error> {
         let mut statement = self
             .connection
             .prepare("SELECT id, time_created, trigger, response FROM command")?;
@@ -106,7 +117,7 @@ impl Database {
         Ok(commands)
     }
 
-    pub(crate) fn get_variable(&self, name: String) -> Result<Variable, Error> {
+    pub fn get_variable(&self, name: &String) -> Result<Variable, Error> {
         let mut statement = self.connection.prepare(
             "SELECT id, time_created, time_modified, name, value \
              FROM variable WHERE name = ?1",
@@ -122,7 +133,7 @@ impl Database {
         })
     }
 
-    pub(crate) fn set_variable(&self, variable: &Variable) -> Result<usize, Error> {
+    pub fn set_variable(&self, variable: &Variable) -> Result<usize, Error> {
         self.connection.execute(
             "INSERT INTO variable(name, value) VALUES(?1, ?2)
              ON CONFLICT(name) DO UPDATE SET value = ?2, time_modified = ?3",
@@ -174,8 +185,23 @@ fn test_set_variable() -> Result<(), Error> {
         "variable".to_string(),
         VariableValue::Text("value".to_string()),
     ))?;
-    let variable = database.get_variable("variable".to_string())?;
+    let variable = database.get_variable(&"variable".to_string())?;
     println!("{:?}", variable);
     assert_eq!(variable.value, VariableValue::Text("value".to_string()));
     Ok(())
+}
+
+#[cfg(test)]
+pub fn with_test_db(block: fn(connection: Database) -> Result<(), Error>) -> Result<(), Error> {
+    let mut rng = rand::thread_rng();
+    let path = format!("./db_test_{}.db3", rng.gen_range(0, 1000000));
+    env::set_var("WITH_TEST_DATABASE", &path);
+    let connection = Database::new()?;
+    let result = block(connection);
+    env::remove_var("WITH_TEST_DATABASE");
+    match std::fs::remove_file(path) {
+        Ok(_) => {}
+        Err(_) => {}
+    }
+    result
 }
