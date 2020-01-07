@@ -2,9 +2,7 @@ use crate::ConnectError;
 use crate::ConnectedState;
 use crate::Event;
 use futures::stream::BoxStream;
-use iced::{
-    Align, Application, Column, Command, Container, Element, Length, Settings, Subscription, Text,
-};
+use iced::*;
 use iced_native::subscription::Recipe;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
@@ -16,7 +14,8 @@ pub fn run() {
 
 #[derive(Debug, Clone)]
 struct BotGui {
-    last: Vec<Event>,
+    events: Vec<Event>,
+    events_scroll: scrollable::State,
     connections: Option<ConnectedState>,
 }
 
@@ -32,7 +31,8 @@ impl Application for BotGui {
     fn new() -> (BotGui, Command<Message>) {
         (
             BotGui {
-                last: Vec::new(),
+                events: Vec::new(),
+                events_scroll: scrollable::State::new(),
                 connections: None,
             },
             Command::perform(crate::connect(), Message::Connected),
@@ -52,11 +52,7 @@ impl Application for BotGui {
                 Err(_) => {}
             },
             Message::EventOccurred(event) => {
-                self.last.push(event);
-
-                if self.last.len() > 5 {
-                    self.last.remove(0);
-                }
+                self.events.push(event);
             }
         };
 
@@ -71,8 +67,8 @@ impl Application for BotGui {
     }
 
     fn view(&mut self) -> Element<Message> {
-        let events = self.last.iter().fold(
-            Column::new().width(Length::Shrink).spacing(10),
+        let events = self.events.iter().fold(
+            Scrollable::new(&mut self.events_scroll).width(Length::Shrink).spacing(10),
             |column, event| {
                 let text = format!("{:?}", event);
                 column.push(Text::new(text).size(40).width(Length::Shrink))
@@ -97,8 +93,8 @@ impl Application for BotGui {
 pub struct Events(ConnectedState);
 
 impl<H, I> Recipe<H, I> for Events
-where
-    H: Hasher,
+    where
+        H: Hasher,
 {
     type Output = Event;
 
