@@ -384,7 +384,7 @@ fn test_quotes() -> Result<(), rusqlite::Error> {
         // Can we do it in such a way that it's not only for quotes, and doesn't require duplication?
         let command = Command::new(
             "!quote".to_string(),
-            "{{let quotes = get_list(\"quotes\"); quotes[random_index(quotes)]}}".to_string(),
+            "{{let quotes = get_list(\"quotes\"); let i = int(\"$1\"); if i == 0 { i = random_index(quotes) } else { i -= 1 } quotes[i]}}".to_string(),
         ).with_database_path(connection.path).build();
         for _ in 0..10 {
             let response = command
@@ -400,6 +400,13 @@ fn test_quotes() -> Result<(), rusqlite::Error> {
                 }
             }
             assert!(found);
+        }
+        for _ in 0..10 {
+            let response = command
+                .respond(&Message::new("!quote 2".to_string()))
+                .unwrap()
+                .text;
+            assert_eq!(response, responses[1]);
         }
         Ok(())
     })

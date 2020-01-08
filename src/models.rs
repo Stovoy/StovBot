@@ -104,20 +104,29 @@ impl Command {
     }
 
     pub fn default_commands() -> Vec<Command> {
-        vec![Command::new(
-            "!8ball".to_string(),
-            "🎱 {{\
-             let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
-             \"You may rely on it.\", \"Concentrate and ask again...\", \
-             \"Outlook not so good...\", \"It is decidedly so!\", \
-             \"Better not tell you.\", \"Very doubtful.\", \"Yes - Definitely!\", \
-             \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
-             \"Outlook good.\", \
-             \"Don't count on it.\"]; \
-             responses[floor(random() * len(responses))]\
-             }}"
-            .to_string(),
-        )]
+        vec![
+            Command::new(
+                "!8ball".to_string(),
+                "🎱 {{\
+                 let responses = [\"All signs point to yes...\", \"Yes!\", \"My sources say nope.\", \
+                 \"You may rely on it.\", \"Concentrate and ask again...\", \
+                 \"Outlook not so good...\", \"It is decidedly so!\", \
+                 \"Better not tell you.\", \"Very doubtful.\", \"Yes - Definitely!\", \
+                 \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
+                 \"Outlook good.\", \
+                 \"Don't count on it.\"]; \
+                 responses[floor(random() * len(responses))]\
+                 }}".to_string(),
+            ),
+            Command::new(
+                "!quote".to_string(),
+                "{{\
+                let quotes = get_list(\"quotes\"); \
+                let i = int(\"$1\"); if i == 0 { i = random_index(quotes) } else { i -= 1 } \
+                quotes[i]\
+                }}".to_string(),
+            ),
+        ]
     }
 }
 
