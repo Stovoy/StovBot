@@ -1,6 +1,6 @@
 use crate::models::{Command, Variable, VariableValue};
 use rusqlite::types::{FromSql, FromSqlError, ToSql, ToSqlOutput, Value, ValueRef};
-use rusqlite::{params, Connection, Error, ErrorCode, Row};
+use rusqlite::{params, Connection, Error, Row};
 use serde_json;
 use std::env;
 use time;
@@ -82,18 +82,7 @@ impl Database {
         }
 
         for command in Command::default_commands() {
-            if let Err(error) = self.add_command(&command) {
-                match error {
-                    Error::SqliteFailure(inner_error, _) => {
-                        if inner_error.code == ErrorCode::ConstraintViolation {
-                            continue;
-                        } else {
-                            return Err(error);
-                        }
-                    }
-                    _ => return Err(error),
-                }
-            }
+            self.upsert_command(&command)?;
         }
 
         Ok(())
@@ -109,6 +98,14 @@ impl Database {
     pub fn update_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "UPDATE command SET response = ?2 WHERE trigger = ?1",
+            params![command.trigger, command.response],
+        )
+    }
+
+    pub fn upsert_command(&self, command: &Command) -> Result<usize, Error> {
+        self.connection.execute(
+            "INSERT INTO command (trigger, response) VALUES(?1, ?2)
+             ON CONFLICT(trigger) DO UPDATE SET response = ?2",
             params![command.trigger, command.response],
         )
     }
@@ -156,7 +153,7 @@ impl Database {
 
     pub fn set_variable(&self, variable: &Variable) -> Result<usize, Error> {
         self.connection.execute(
-            "INSERT INTO variable(name, value) VALUES(?1, ?2)
+            "INSERT INTO variable (name, value) VALUES(?1, ?2)
              ON CONFLICT(name) DO UPDATE SET value = ?2, time_modified = ?3",
             params![variable.name, variable.value, time::get_time()],
         )
