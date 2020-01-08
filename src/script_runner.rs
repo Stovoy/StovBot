@@ -14,8 +14,8 @@ impl From<Error> for ScriptRunnerError {
     }
 }
 
-pub fn run(script: &String) -> String {
-    match eval(script) {
+pub fn run(script: &String, database_path: &String) -> String {
+    match eval(script, database_path) {
         Ok(result) => {
             println!("{}", result);
             result
@@ -28,14 +28,16 @@ pub fn run(script: &String) -> String {
     }
 }
 
-fn eval(script: &String) -> Result<String, ScriptRunnerError> {
+fn eval(script: &String, database_path: &String) -> Result<String, ScriptRunnerError> {
     let mut path = env::current_exe()?;
     path.pop();
     if path.ends_with("deps") {
         path.pop();
     }
     path.push("script_engine");
-    let output = Command::new(path).args(&[script]).output().unwrap();
+    let output = Command::new(path).args(&[script])
+        .env("WITH_DATABASE", database_path)
+        .output().unwrap();
     match output.status.code().unwrap() {
         100 => Err(ScriptRunnerError::TimeoutError),
         128 => Err(ScriptRunnerError::CrashError),

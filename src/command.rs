@@ -108,7 +108,7 @@ impl CommandExt for Command {
                 }
                 Token::ScriptEnd => {
                     if in_script {
-                        let script_result = &script_runner::run(&script);
+                        let script_result = &script_runner::run(&script, &self.database_path);
                         accumulator = &mut response;
                         *accumulator += script_result;
                         in_script = false;
@@ -119,7 +119,7 @@ impl CommandExt for Command {
                 Token::ScriptEndAndExtra => {
                     if in_script {
                         *accumulator += "}";
-                        let script_result = &script_runner::run(&script);
+                        let script_result = &script_runner::run(&script, &self.database_path);
                         accumulator = &mut response;
                         *accumulator += script_result;
                         in_script = false;
@@ -294,6 +294,7 @@ fn test_8ball() {
             .respond(&Message::new("!8ball".to_string()))
             .unwrap()
             .text;
+        println!("{}", response);
         let mut found = false;
         for accepted_response in responses.iter() {
             if response.ends_with(accepted_response) {
@@ -352,7 +353,7 @@ fn test_counter() -> Result<(), rusqlite::Error> {
         let command = Command::new(
             "!count".to_string(),
             "{{let count = get(\"count\"); count += 1; set(\"count\", count); count}}".to_string(),
-        );
+        ).with_database_path(connection.path).build();
         let response = command
             .respond(&Message::new("!count".to_string()))
             .unwrap()

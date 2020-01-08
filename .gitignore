@@ -2,3 +2,4 @@
 **/*.rs.bk
 secrets.toml
 db.db3
+db_test_*.db3

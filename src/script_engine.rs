@@ -147,7 +147,7 @@ impl ScriptFunction {
     // Want to serialize all these events and send them on stdout along with script output,
     // which means we'll need to store them somehow.
     fn get(name: String) -> String {
-        let database = Database::connect().unwrap();
+        let database = Database::connect(None).unwrap();
         match database.get_variable(&name) {
             Ok(variable) => match variable.value {
                 VariableValue::Text(text) => text,
@@ -161,7 +161,7 @@ impl ScriptFunction {
     }
 
     fn set<T: Display>(name: String, value: T) {
-        let database = Database::connect().unwrap();
+        let database = Database::connect(None).unwrap();
         database
             .set_variable(&Variable::new(
                 name,

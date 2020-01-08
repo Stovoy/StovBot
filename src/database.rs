@@ -10,21 +10,38 @@ use rand::Rng;
 
 pub struct Database {
     connection: Connection,
+    pub path: String,
 }
 
 impl Database {
-    pub fn connect() -> Result<Database, Error> {
+    pub fn connect(path: Option<String>) -> Result<Database, Error> {
         // TODO: How to set an env var across all tests to default to in-memory?
-        let path = match env::var("WITH_TEST_DATABASE") {
-            Ok(value) => value,
-            Err(_) => "./db.db3".to_string(),
+        let path = match path {
+            Some(path) => path,
+            None => match env::var("WITH_DATABASE") {
+                Ok(value) => value,
+                Err(e) => {
+                    println!("{}", e);
+                    Database::default_path()
+                },
+            },
         };
-        let connection = Connection::open(&path)?;
-        Ok(Database { connection })
+        let connection = match path.as_ref() {
+            "MEMORY" => Connection::open_in_memory()?,
+            _ => Connection::open(&path)?,
+        };
+        Ok(Database { connection, path })
     }
 
     pub fn new() -> Result<Database, Error> {
-        let database = Database::connect()?;
+        let database = Database::connect(None)?;
+        database.migrate()?;
+        Ok(database)
+    }
+
+    #[cfg(test)]
+    pub fn new_with_path(path: String) -> Result<Database, Error> {
+        let database = Database::connect(Some(path))?;
         database.migrate()?;
         Ok(database)
     }
@@ -32,9 +49,13 @@ impl Database {
     #[cfg(test)]
     fn new_in_memory() -> Result<Database, Error> {
         let connection = Connection::open_in_memory()?;
-        let database = Database { connection };
+        let database = Database { connection, path: "MEMORY".to_string() };
         database.migrate()?;
         Ok(database)
+    }
+
+    pub fn default_path() -> String {
+        "./db.db3".to_string()
     }
 
     fn migrate(&self) -> Result<(), Error> {
@@ -152,6 +173,7 @@ impl Database {
             trigger: row.get(2)?,
             response: row.get(3)?,
             actor: None,
+            database_path: self.path.clone(),
         })
     }
 
@@ -219,10 +241,8 @@ fn test_set_variable() -> Result<(), Error> {
 pub fn with_test_db(block: fn(connection: Database) -> Result<(), Error>) -> Result<(), Error> {
     let mut rng = rand::thread_rng();
     let path = format!("./db_test_{}.db3", rng.gen_range(0, 1000000));
-    env::set_var("WITH_TEST_DATABASE", &path);
-    let connection = Database::new()?;
+    let connection = Database::new_with_path(path.clone())?;
     let result = block(connection);
-    env::remove_var("WITH_TEST_DATABASE");
     match std::fs::remove_file(path) {
         Ok(_) => {}
         Err(_) => {}

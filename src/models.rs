@@ -10,6 +10,7 @@ use std::fmt::Display;
 use time::Timespec;
 #[cfg(feature = "twitch")]
 use twitchchat::Writer as TwitchWriter;
+use crate::database::Database;
 
 // Note: Wrapped in struct so that we can implement Debug on it.
 #[derive(Clone)]
@@ -51,6 +52,7 @@ pub struct Command {
     pub trigger: String,
     pub response: String,
     pub actor: Option<Actor>,
+    pub database_path: String,
 }
 
 pub struct Message {
@@ -76,17 +78,29 @@ pub enum Source {
 
 impl Command {
     pub fn new(trigger: String, response: String) -> Command {
-        Command::new_with_actor(trigger, response, None)
-    }
-
-    pub fn new_with_actor(trigger: String, response: String, actor: Option<Actor>) -> Command {
         Command {
             id: 0,
             time_created: time::empty_tm().to_timespec(),
             trigger,
             response,
-            actor,
+            actor: None,
+            database_path: Database::default_path(),
         }
+    }
+
+    #[cfg(test)]
+    pub fn with_database_path(&mut self, database_path: String) -> &mut Command {
+        self.database_path = database_path;
+        self
+    }
+
+    pub fn with_actor(&mut self, actor: Actor) -> &mut Command {
+        self.actor = Some(actor);
+        self
+    }
+
+    pub fn build(&self) -> Command {
+        self.clone()
     }
 
     pub fn default_commands() -> Vec<Command> {
