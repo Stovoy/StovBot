@@ -10,6 +10,8 @@ RUN \
  --mount=type=cache,target=/usr/local/cargo/registry \
  --mount=type=cache,target=/app/target \
  cargo build --release && \
+ strip target/release/stovbot && \
+ strip target/release/script_engine && \
  cp /app/target/release/stovbot /stovbot && \
  cp /app/target/release/script_engine /script_engine
 
