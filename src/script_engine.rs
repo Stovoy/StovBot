@@ -6,6 +6,7 @@ use crossbeam::channel::bounded;
 use crossbeam::channel::RecvTimeoutError;
 use rand::Rng;
 use rhai::{Any, AnyExt, Engine, EvalAltResult, RegisterFn};
+use rusqlite::Error;
 use std::convert::TryInto;
 use std::fmt::Display;
 use std::ops::{Add, Mul};
@@ -14,7 +15,6 @@ use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 use std::{env, panic};
-use rusqlite::Error;
 
 mod database;
 mod models;
@@ -168,8 +168,8 @@ impl ScriptFunction {
             },
             Err(e) => match e {
                 Error::QueryReturnedNoRows => panic!(format!("Variable {} does not exist!", name)),
-                _ => panic!(e)
-            }
+                _ => panic!(e),
+            },
         }
     }
 
@@ -201,8 +201,8 @@ impl ScriptFunction {
             },
             Err(e) => match e {
                 Error::QueryReturnedNoRows => panic!(format!("Variable {} does not exist!", name)),
-                _ => panic!(e)
-            }
+                _ => panic!(e),
+            },
         }
     }
 }
@@ -236,8 +236,8 @@ impl From<f64> for i64 {
 }
 
 impl<T, U> Into<U> for T
-    where
-        U: From<T>,
+where
+    U: From<T>,
 {
     fn into(self) -> U {
         U::from(self)

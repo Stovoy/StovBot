@@ -272,7 +272,7 @@ impl Stream for ConnectedState {
 
         for receiver in receivers.iter() {
             if let Ok(poll) = receiver(&self) {
-                return poll
+                return poll;
             };
         }
 
@@ -333,9 +333,7 @@ impl Debug for Event {
                 #[cfg(feature = "twitch")]
                 Event::TwitchEvent(e) => match e {
                     TwitchEvent::Ready(_) => "Twitch - Ready".to_string(),
-                    TwitchEvent::PrivMsg(_, msg) => {
-                        format!("{}: {}", msg.user(), msg.message())
-                    }
+                    TwitchEvent::PrivMsg(_, msg) => format!("{}: {}", msg.user(), msg.message()),
                 },
                 #[cfg(feature = "discord")]
                 Event::DiscordEvent(e) => match e {

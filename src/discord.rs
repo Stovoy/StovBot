@@ -50,5 +50,6 @@ pub fn connect(
             senders,
             shared_state,
         },
-    ).expect("Err creating client")
+    )
+    .expect("Err creating client")
 }

@@ -96,14 +96,14 @@ impl Bot {
             .iter()
             .any(|default_command| default_command.trigger == command.trigger)
             || special_command::commands()
-            .iter()
-            .any(|special_command| special_command.trigger == command.trigger)
+                .iter()
+                .any(|special_command| special_command.trigger == command.trigger)
     }
 
     pub fn run(&mut self) {
         loop {
             #[cfg(feature = "twitch")]
-                let twitch_event_handler = |msg| match msg {
+            let twitch_event_handler = |msg| match msg {
                 Ok(event) => match event {
                     TwitchEvent::Ready(writer) => {
                         writer.join("stovoy").unwrap();
@@ -120,7 +120,7 @@ impl Bot {
                 Err(_) => None,
             };
             #[cfg(feature = "discord")]
-                let discord_event_handler = |msg| match msg {
+            let discord_event_handler = |msg| match msg {
                 Ok(event) => match event {
                     DiscordEvent::Ready => None,
                     DiscordEvent::Message(ctx, msg) => Some(Message {

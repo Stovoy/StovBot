@@ -16,9 +16,10 @@ pub fn connect(token: String) -> Client<TcpStream> {
             .nick("StovBot")
             .token(token)
             .build()
-            .expect("error creating UserConfig"))
-        .expect("failed to connect to twitch")
-        .filter::<commands::PrivMsg>()
+            .expect("error creating UserConfig"),
+    )
+    .expect("failed to connect to twitch")
+    .filter::<commands::PrivMsg>()
 }
 
 #[derive(Clone)]
