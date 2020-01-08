@@ -1,3 +1,4 @@
+use crate::database::Database;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
@@ -10,7 +11,6 @@ use std::fmt::Display;
 use time::Timespec;
 #[cfg(feature = "twitch")]
 use twitchchat::Writer as TwitchWriter;
-use crate::database::Database;
 
 // Note: Wrapped in struct so that we can implement Debug on it.
 #[derive(Clone)]
@@ -154,7 +154,7 @@ impl Variable {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VariableValue {
     Text(String),
-    StringList(Vec<ArrayString>),
+    StringList(Vec<StringItem>),
 }
 
 impl Display for VariableValue {
@@ -172,8 +172,17 @@ impl Display for VariableValue {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ArrayString {
+pub struct StringItem {
     #[serde(with = "TimespecDef")]
     pub time_created: Timespec,
     pub value: String,
+}
+
+impl StringItem {
+    pub fn new(item: &str) -> StringItem {
+        StringItem {
+            time_created: time::get_time(),
+            value: item.to_string(),
+        }
+    }
 }

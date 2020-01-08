@@ -81,6 +81,7 @@ impl ScriptEngine {
         engine.register_fn("string", ScriptFunction::string as fn(x: f64) -> String);
         engine.register_fn("string", ScriptFunction::string as fn(x: bool) -> String);
         engine.register_fn("random", ScriptFunction::random);
+        engine.register_fn("random_index", ScriptFunction::random_index);
         engine.register_fn("len", ScriptFunction::len);
         engine.register_fn("floor", ScriptFunction::floor);
         engine.register_fn("int", ScriptFunction::int);
@@ -101,6 +102,7 @@ impl ScriptEngine {
         engine.register_fn("set", ScriptFunction::set as fn(x: String, y: i64));
         engine.register_fn("set", ScriptFunction::set as fn(x: String, y: f64));
         engine.register_fn("set", ScriptFunction::set as fn(x: String, y: bool));
+        engine.register_fn("get_list", ScriptFunction::get_list);
         ScriptEngine(engine)
     }
 }
@@ -115,6 +117,16 @@ impl ScriptFunction {
     fn random() -> f64 {
         let mut rng = rand::thread_rng();
         rng.gen_range(0.0, 1.0)
+    }
+
+    fn random_index(x: Vec<Box<dyn Any>>) -> i64 {
+        let mut rng = rand::thread_rng();
+        let index = rng.gen_range(
+            0,
+            x.len(),
+        );
+
+        index as i64
     }
 
     fn len(x: Vec<Box<dyn Any>>) -> i64 {
@@ -152,7 +164,7 @@ impl ScriptFunction {
             Ok(variable) => match variable.value {
                 VariableValue::Text(text) => text,
                 VariableValue::StringList(_) => panic!(format!(
-                    "Variable {} is a StringList, not Text. Use get_list()!",
+                    "Variable {} is StringList, not Text. Use get_list()!",
                     name
                 )),
             },
@@ -168,6 +180,26 @@ impl ScriptFunction {
                 VariableValue::Text(format!("{}", value)),
             ))
             .unwrap();
+    }
+
+    fn get_list(name: String) -> Vec<Box<dyn Any>> {
+        let database = Database::connect(None).unwrap();
+        match database.get_variable(&name) {
+            Ok(variable) => match variable.value {
+                VariableValue::Text(_) => panic!(format!(
+                    "Variable {} is Text, not StringList. Use get()!",
+                    name
+                )),
+                VariableValue::StringList(list) => {
+                    let mut results: Vec<Box<dyn Any>> = Vec::new();
+                    for item in list.iter() {
+                        results.push(Box::new(item.value.clone()));
+                    }
+                    results
+                }
+            },
+            Err(_) => panic!(format!("Variable {} does not exist!", name)),
+        }
     }
 }
 
@@ -200,8 +232,8 @@ impl From<f64> for i64 {
 }
 
 impl<T, U> Into<U> for T
-where
-    U: From<T>,
+    where
+        U: From<T>,
 {
     fn into(self) -> U {
         U::from(self)

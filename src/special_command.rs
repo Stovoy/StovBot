@@ -5,27 +5,39 @@ pub fn commands() -> Vec<Command> {
         Command::new(
             "!command add".to_string(),
             "Your command has been added".to_string(),
-        ).with_actor(Actor(add_command)).build(),
+        )
+        .with_actor(Actor(add_command))
+        .build(),
         Command::new(
             "!command edit".to_string(),
             "Your command has been edited".to_string(),
-        ).with_actor(Actor(edit_command)).build(),
+        )
+        .with_actor(Actor(edit_command))
+        .build(),
         Command::new(
             "!command delete".to_string(),
             "Your command has been deleted".to_string(),
-        ).with_actor(Actor(delete_command)).build(),
+        )
+        .with_actor(Actor(delete_command))
+        .build(),
         Command::new(
             "!variable add".to_string(),
             "Your variable has been added".to_string(),
-        ).with_actor(Actor(add_variable)).build(),
+        )
+        .with_actor(Actor(add_variable))
+        .build(),
         Command::new(
             "!variable edit".to_string(),
             "Your variable has been edited".to_string(),
-        ).with_actor(Actor(edit_variable)).build(),
+        )
+        .with_actor(Actor(edit_variable))
+        .build(),
         Command::new(
             "!variable delete".to_string(),
             "Your variable has been deleted".to_string(),
-        ).with_actor(Actor(delete_variable)).build(),
+        )
+        .with_actor(Actor(delete_variable))
+        .build(),
     ]
 }
 

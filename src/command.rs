@@ -1,5 +1,5 @@
 use crate::bot::BotMessage;
-use crate::models::{Command, Message};
+use crate::models::{Command, Message, StringItem};
 use crate::script_runner;
 use logos::Logos;
 use std::collections::hash_map::Values;
@@ -285,7 +285,7 @@ fn test_8ball() {
          \"It is certain!\", \"Most likely.\", \"Ask again later.\", \"No!\", \
          \"Outlook good.\", \
          \"Don't count on it.\"]; \
-         responses[floor(random() * len(responses))]\
+         responses[random_index(responses)]\
          }}"
         .to_string(),
     );
@@ -353,7 +353,9 @@ fn test_counter() -> Result<(), rusqlite::Error> {
         let command = Command::new(
             "!count".to_string(),
             "{{let count = get(\"count\"); count += 1; set(\"count\", count); count}}".to_string(),
-        ).with_database_path(connection.path).build();
+        )
+        .with_database_path(connection.path)
+        .build();
         let response = command
             .respond(&Message::new("!count".to_string()))
             .unwrap()
@@ -364,6 +366,41 @@ fn test_counter() -> Result<(), rusqlite::Error> {
             .unwrap()
             .text;
         assert_eq!(response, "2");
+        Ok(())
+    })
+}
+
+#[test]
+fn test_quotes() -> Result<(), rusqlite::Error> {
+    database::with_test_db(|connection| {
+        let responses = ["hello", "hi", "howdy"];
+        connection.set_variable(&Variable::new(
+            "quotes".to_string(),
+            VariableValue::StringList(responses.iter()
+                .map(|response| StringItem::new(response)).collect()),
+        ))?;
+        // TODO: Should array modification commands be a special set of command?
+        // We want things like !quote add, !quote remove, !quote N
+        // Can we do it in such a way that it's not only for quotes, and doesn't require duplication?
+        let command = Command::new(
+            "!quote".to_string(),
+            "{{let quotes = get_list(\"quotes\"); quotes[random_index(quotes)]}}".to_string(),
+        ).with_database_path(connection.path).build();
+        for _ in 0..10 {
+            let response = command
+                .respond(&Message::new("!quote".to_string()))
+                .unwrap()
+                .text;
+            println!("{}", response);
+            let mut found = false;
+            for accepted_response in &responses {
+                if response == **accepted_response {
+                    found = true;
+                    break;
+                }
+            }
+            assert!(found);
+        }
         Ok(())
     })
 }

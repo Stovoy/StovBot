@@ -23,7 +23,7 @@ impl Database {
                 Err(e) => {
                     println!("{}", e);
                     Database::default_path()
-                },
+                }
             },
         };
         let connection = match path.as_ref() {
@@ -49,7 +49,10 @@ impl Database {
     #[cfg(test)]
     fn new_in_memory() -> Result<Database, Error> {
         let connection = Connection::open_in_memory()?;
-        let database = Database { connection, path: "MEMORY".to_string() };
+        let database = Database {
+            connection,
+            path: "MEMORY".to_string(),
+        };
         database.migrate()?;
         Ok(database)
     }

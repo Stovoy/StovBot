@@ -35,9 +35,11 @@ fn eval(script: &String, database_path: &String) -> Result<String, ScriptRunnerE
         path.pop();
     }
     path.push("script_engine");
-    let output = Command::new(path).args(&[script])
+    let output = Command::new(path)
+        .args(&[script])
         .env("WITH_DATABASE", database_path)
-        .output().unwrap();
+        .output()
+        .unwrap();
     match output.status.code().unwrap() {
         100 => Err(ScriptRunnerError::TimeoutError),
         128 => Err(ScriptRunnerError::CrashError),
