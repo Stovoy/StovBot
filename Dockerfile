@@ -17,5 +17,5 @@ FROM debian:buster@sha256:f19be6b8095d6ea46f5345e2651eec4e5ee9e84fc83f3bc3b73587
 WORKDIR /app
 ENTRYPOINT ["/stovbot"]
 RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
-COPY --from=build /stovbot /stovbot
 COPY --from=build /script_engine /script_engine
+COPY --from=build /stovbot /stovbot
