@@ -1,11 +1,14 @@
 use serde::export::fmt::Error;
 use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "discord")]
 use serenity::model::channel::Message as DiscordMessage;
+#[cfg(feature = "discord")]
 use serenity::prelude::Context as DiscordContext;
 use std::fmt::Debug;
 use std::fmt::Display;
 use time::Timespec;
+#[cfg(feature = "twitch")]
 use twitchchat::Writer as TwitchWriter;
 
 // Note: Wrapped in struct so that we can implement Debug on it.
@@ -58,7 +61,10 @@ pub struct User {
 pub enum Source {
     #[cfg(test)]
     None,
+    Admin,
+    #[cfg(feature = "twitch")]
     Twitch(TwitchWriter, String),
+    #[cfg(feature = "discord")]
     Discord(DiscordContext, DiscordMessage),
 }
 

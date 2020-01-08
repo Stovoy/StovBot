@@ -1,13 +1,17 @@
+use crate::admin::AdminEvent;
 use crate::command::CommandExt;
 use crate::command::Commands;
 use crate::database::Database;
+#[cfg(feature = "discord")]
 use crate::discord::DiscordEvent;
 use crate::models::{Action, ActionError, Command, Message, Source, User, Variable};
 use crate::special_command;
+#[cfg(feature = "twitch")]
 use crate::twitch::TwitchEvent;
-use crossbeam::channel::{select, Receiver, Sender};
+use crossbeam::channel::{select, Sender, Receiver};
 use futures::task::Waker;
 use rusqlite::Error;
+#[cfg(feature = "discord")]
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
 use std::sync::{Arc, Mutex};
 
@@ -37,8 +41,11 @@ pub struct Bot {
     pub commands: Commands,
 
     pub bot_event_sender: Sender<BotEvent>,
+    #[cfg(feature = "twitch")]
     pub twitch_event_receiver: Receiver<TwitchEvent>,
+    #[cfg(feature = "discord")]
     pub discord_event_receiver: Receiver<DiscordEvent>,
+    pub admin_event_receiver: Receiver<AdminEvent>,
     pub shared_state: Arc<Mutex<SharedState>>,
 
     pub database: Database,
@@ -47,8 +54,9 @@ pub struct Bot {
 impl Bot {
     pub fn new(
         bot_event_sender: Sender<BotEvent>,
-        twitch_event_receiver: Receiver<TwitchEvent>,
-        discord_event_receiver: Receiver<DiscordEvent>,
+        #[cfg(feature = "twitch")] twitch_event_receiver: Receiver<TwitchEvent>,
+        #[cfg(feature = "discord")] discord_event_receiver: Receiver<DiscordEvent>,
+        admin_event_receiver: Receiver<AdminEvent>,
         shared_state: Arc<Mutex<SharedState>>,
     ) -> Result<Bot, Error> {
         let database = Database::new()?;
@@ -72,8 +80,11 @@ impl Bot {
             username: "StovBot".to_string(),
             commands: Commands::new(commands),
             bot_event_sender,
+            #[cfg(feature = "twitch")]
             twitch_event_receiver,
+            #[cfg(feature = "discord")]
             discord_event_receiver,
+            admin_event_receiver,
             shared_state,
             database,
         };
@@ -86,43 +97,77 @@ impl Bot {
             .find(|default_command| default_command.trigger == command.trigger)
             .is_some()
             || special_command::commands()
-                .iter()
-                .find(|special_command| special_command.trigger == command.trigger)
-                .is_some()
+            .iter()
+            .find(|special_command| special_command.trigger == command.trigger)
+            .is_some()
     }
 
     pub fn run(&mut self) {
         loop {
-            let message = select! {
-                recv(self.twitch_event_receiver) -> msg => match msg {
-                    Ok(event) => match event {
-                        TwitchEvent::Ready(writer) => {
-                            writer.join("stovoy").unwrap();
-                            None
-                        }
-                        TwitchEvent::PrivMsg(writer, msg) => Some(Message {
-                            sender: User {
-                                username: msg.user().to_string(),
-                            },
-                            text: msg.message().to_string(),
-                            source: Source::Twitch(writer, "stovoy".to_string()),
-                        })
+            #[cfg(feature = "twitch")]
+                let twitch_event_handler = |msg| match msg {
+                Ok(event) => match event {
+                    TwitchEvent::Ready(writer) => {
+                        writer.join("stovoy").unwrap();
+                        None
                     }
-                    Err(_) => None,
+                    TwitchEvent::PrivMsg(writer, msg) => Some(Message {
+                        sender: User {
+                            username: msg.user().to_string(),
+                        },
+                        text: msg.message().to_string(),
+                        source: Source::Twitch(writer, "stovoy".to_string()),
+                    }),
                 },
-                recv(self.discord_event_receiver) -> msg => match msg {
-                    Ok(event) => match event {
-                        DiscordEvent::Ready => None,
-                        DiscordEvent::Message(ctx, msg) => Some(Message {
-                            sender: User {
-                                username: msg.author.name.to_string(),
-                            },
-                            text: msg.content.to_string(),
-                            source: Source::Discord(ctx, msg),
-                        })
-                    }
-                    Err(_) => None,
+                Err(_) => None,
+            };
+            #[cfg(feature = "discord")]
+                let discord_event_handler = |msg| match msg {
+                Ok(event) => match event {
+                    DiscordEvent::Ready => None,
+                    DiscordEvent::Message(ctx, msg) => Some(Message {
+                        sender: User {
+                            username: msg.author.name.to_string(),
+                        },
+                        text: msg.content.to_string(),
+                        source: Source::Discord(ctx, msg),
+                    }),
                 },
+                Err(_) => None,
+            };
+            let admin_event_handler = |msg| match msg {
+                Ok(event) => match event {
+                    AdminEvent::Message(msg) => Some(Message {
+                        sender: User {
+                            username: "Stovoy".to_string(),
+                        },
+                        text: msg,
+                        source: Source::Admin,
+                    }),
+                },
+                Err(_) => None,
+            };
+            let message = {
+                #[cfg(all(feature = "twitch", feature = "discord"))]
+                select! {
+                    recv(self.twitch_event_receiver) -> msg => twitch_event_handler(msg),
+                    recv(self.discord_event_receiver) -> msg => discord_event_handler(msg),
+                    recv(self.admin_event_receiver) -> msg => admin_event_handler(msg),
+                }
+                #[cfg(all(feature = "twitch", not(feature = "discord")))]
+                select! {
+                    recv(self.twitch_event_receiver) -> msg => twitch_event_handler(msg),
+                    recv(self.admin_event_receiver) -> msg => admin_event_handler(msg),
+                }
+                #[cfg(all(feature = "discord", not(feature = "twitch")))]
+                select! {
+                    recv(self.discord_event_receiver) -> msg => discord_event_handler(msg),
+                    recv(self.admin_event_receiver) -> msg => admin_event_handler(msg),
+                }
+                #[cfg(all(not(feature = "discord"), not(feature = "twitch")))]
+                select! {
+                    recv(self.admin_event_receiver) -> msg => admin_event_handler(msg),
+                }
             };
             match message {
                 None => {}
@@ -235,9 +280,12 @@ impl Bot {
         match source {
             #[cfg(test)]
             Source::None => {}
+            Source::Admin => println!("{}", text),
+            #[cfg(feature = "twitch")]
             Source::Twitch(writer, channel) => {
                 writer.send(channel, text).unwrap();
             }
+            #[cfg(feature = "discord")]
             Source::Discord(ctx, msg) => {
                 let response = DiscordMessageBuilder::new().push(text).build();
                 if let Err(why) = msg.channel_id.say(&ctx.http, &response) {

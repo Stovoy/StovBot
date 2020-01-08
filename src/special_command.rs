@@ -21,21 +21,8 @@ pub fn commands() -> Vec<Command> {
 }
 
 fn add_command(command: &Command, message: &Message) -> Result<Action, ActionError> {
-    let command = message.after_trigger(&command.trigger);
-    match command.find(' ') {
-        Some(index) => {
-            let (trigger, response) = command.split_at(index);
-            if !trigger.starts_with("!") {
-                Err(ActionError::BadCommandTriggerPrefix)
-            } else {
-                Ok(Action::AddCommand(Command::new(
-                    trigger.to_string(),
-                    response.to_string(),
-                )))
-            }
-        }
-        None => Err(ActionError::BadCommand(command.to_string())),
-    }
+    let (trigger, response) = parse_command_message(command, message)?;
+    Ok(Action::AddCommand(Command::new(trigger, response)))
 }
 
 fn delete_command(command: &Command, message: &Message) -> Result<Action, ActionError> {
@@ -52,19 +39,22 @@ fn delete_command(command: &Command, message: &Message) -> Result<Action, Action
 }
 
 fn edit_command(command: &Command, message: &Message) -> Result<Action, ActionError> {
+    let (trigger, response) = parse_command_message(command, message)?;
+    Ok(Action::EditCommand(Command::new(trigger, response)))
+}
+
+fn parse_command_message(command: &Command, message: &Message) -> Result<(String, String), ActionError> {
     let command = message.after_trigger(&command.trigger);
-    match command.find(' ') {
-        Some(index) => {
-            let (trigger, response) = command.split_at(index);
-            if !trigger.starts_with("!") {
-                Err(ActionError::BadCommandTriggerPrefix)
-            } else {
-                Ok(Action::EditCommand(Command::new(
-                    trigger.to_string(),
-                    response.to_string(),
-                )))
-            }
+    let parts: Vec<&str> = command.split(' ').collect();
+    if parts.len() <= 1 {
+        return Err(ActionError::BadCommand(command.to_string()));
+    } else {
+        let trigger = parts[0];
+        let response = parts[1..].join(" ");
+        if !trigger.starts_with("!") {
+            Err(ActionError::BadCommandTriggerPrefix)
+        } else {
+            Ok((trigger.to_string(), response.to_string()))
         }
-        None => Err(ActionError::BadCommand(command.to_string())),
     }
 }

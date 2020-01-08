@@ -68,7 +68,9 @@ impl Application for BotGui {
 
     fn view(&mut self) -> Element<Message> {
         let events = self.events.iter().fold(
-            Scrollable::new(&mut self.events_scroll).width(Length::Shrink).spacing(10),
+            Scrollable::new(&mut self.events_scroll)
+                .width(Length::Shrink)
+                .spacing(10),
             |column, event| {
                 let text = format!("{:?}", event);
                 column.push(Text::new(text).size(40).width(Length::Shrink))
@@ -93,8 +95,8 @@ impl Application for BotGui {
 pub struct Events(ConnectedState);
 
 impl<H, I> Recipe<H, I> for Events
-    where
-        H: Hasher,
+where
+    H: Hasher,
 {
     type Output = Event;
 
