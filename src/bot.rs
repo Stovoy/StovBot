@@ -318,7 +318,7 @@ impl Bot {
         response
     }
 
-    fn send_message(&self, source: &Source, text: &String) {
+    fn send_message(&self, source: &Source, text: &str) {
         match source {
             #[cfg(test)]
             Source::None => {}
@@ -358,7 +358,7 @@ impl Message {
         }
     }
 
-    pub fn after_trigger(&self, trigger: &String) -> &str {
+    pub fn after_trigger(&self, trigger: &str) -> &str {
         if trigger.len() + 1 > self.text.len() {
             ""
         } else {

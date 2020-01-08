@@ -142,7 +142,7 @@ impl Database {
         Ok(variables)
     }
 
-    pub fn get_variable(&self, name: &String) -> Result<Variable, Error> {
+    pub fn get_variable(&self, name: &str) -> Result<Variable, Error> {
         let mut statement = self.connection.prepare(
             "SELECT id, time_created, time_modified, name, value \
              FROM variable WHERE name = ?1",

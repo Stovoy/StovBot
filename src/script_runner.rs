@@ -14,7 +14,7 @@ impl From<Error> for ScriptRunnerError {
     }
 }
 
-pub fn run(script: &String, database_path: &String) -> String {
+pub fn run(script: &str, database_path: &str) -> String {
     match eval(script, database_path) {
         Ok(result) => {
             println!("{}", result);
@@ -28,7 +28,7 @@ pub fn run(script: &String, database_path: &String) -> String {
     }
 }
 
-fn eval(script: &String, database_path: &String) -> Result<String, ScriptRunnerError> {
+fn eval(script: &str, database_path: &str) -> Result<String, ScriptRunnerError> {
     let mut path = env::current_exe()?;
     path.pop();
     if path.ends_with("deps") {
