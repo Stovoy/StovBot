@@ -121,10 +121,7 @@ impl ScriptFunction {
 
     fn random_index(x: Vec<Box<dyn Any>>) -> i64 {
         let mut rng = rand::thread_rng();
-        let index = rng.gen_range(
-            0,
-            x.len(),
-        );
+        let index = rng.gen_range(0, x.len());
 
         index as i64
     }
@@ -232,8 +229,8 @@ impl From<f64> for i64 {
 }
 
 impl<T, U> Into<U> for T
-    where
-        U: From<T>,
+where
+    U: From<T>,
 {
     fn into(self) -> U {
         U::from(self)

@@ -1,5 +1,5 @@
 use crate::bot::BotMessage;
-use crate::models::{Command, Message, StringItem};
+use crate::models::{Command, Message};
 use crate::script_runner;
 use logos::Logos;
 use std::collections::hash_map::Values;
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 #[cfg(test)]
 use crate::database;
 #[cfg(test)]
-use crate::models::{Variable, VariableValue};
+use crate::models::{StringItem, Variable, VariableValue};
 
 #[derive(Logos, Debug, PartialEq)]
 enum Token {
@@ -376,8 +376,12 @@ fn test_quotes() -> Result<(), rusqlite::Error> {
         let responses = ["hello", "hi", "howdy"];
         connection.set_variable(&Variable::new(
             "quotes".to_string(),
-            VariableValue::StringList(responses.iter()
-                .map(|response| StringItem::new(response)).collect()),
+            VariableValue::StringList(
+                responses
+                    .iter()
+                    .map(|response| StringItem::new(response))
+                    .collect(),
+            ),
         ))?;
         // TODO: Should array modification commands be a special set of command?
         // We want things like !quote add, !quote remove, !quote N
