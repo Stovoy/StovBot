@@ -24,8 +24,11 @@ impl Debug for Actor {
 
 pub enum Action {
     AddCommand(Command),
-    DeleteCommand(Command),
     EditCommand(Command),
+    DeleteCommand(Command),
+    AddVariable(Variable),
+    EditVariable(Variable),
+    DeleteVariable(Variable),
 }
 
 #[derive(Debug)]
@@ -36,6 +39,9 @@ pub enum ActionError {
     CannotModifyBuiltInCommand,
     BadCommand(String),
     BadCommandTriggerPrefix,
+    BadVariable(String),
+    VariableAlreadyExists,
+    VariableDoesNotExist,
 }
 
 #[derive(Debug, Clone)]

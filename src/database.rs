@@ -82,17 +82,17 @@ impl Database {
         )
     }
 
-    pub fn delete_command(&self, command: &Command) -> Result<usize, Error> {
-        self.connection.execute(
-            "DELETE FROM command WHERE trigger = ?1",
-            params![command.trigger],
-        )
-    }
-
     pub fn update_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
             "UPDATE command SET response = ?2 WHERE trigger = ?1",
             params![command.trigger, command.response],
+        )
+    }
+
+    pub fn delete_command(&self, command: &Command) -> Result<usize, Error> {
+        self.connection.execute(
+            "DELETE FROM command WHERE trigger = ?1",
+            params![command.trigger],
         )
     }
 
@@ -135,6 +135,13 @@ impl Database {
             "INSERT INTO variable(name, value) VALUES(?1, ?2)
              ON CONFLICT(name) DO UPDATE SET value = ?2, time_modified = ?3",
             params![variable.name, variable.value, time::get_time()],
+        )
+    }
+
+    pub fn delete_variable(&self, variable: &Variable) -> Result<usize, Error> {
+        self.connection.execute(
+            "DELETE FROM variable WHERE name = ?1",
+            params![variable.name],
         )
     }
 

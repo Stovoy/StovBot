@@ -8,7 +8,7 @@ use crate::models::{Action, ActionError, Command, Message, Source, User, Variabl
 use crate::special_command;
 #[cfg(feature = "twitch")]
 use crate::twitch::TwitchEvent;
-use crossbeam::channel::{select, Sender, Receiver};
+use crossbeam::channel::{select, Receiver, Sender};
 use futures::task::Waker;
 use rusqlite::Error;
 #[cfg(feature = "discord")]
@@ -97,15 +97,15 @@ impl Bot {
             .find(|default_command| default_command.trigger == command.trigger)
             .is_some()
             || special_command::commands()
-            .iter()
-            .find(|special_command| special_command.trigger == command.trigger)
-            .is_some()
+                .iter()
+                .find(|special_command| special_command.trigger == command.trigger)
+                .is_some()
     }
 
     pub fn run(&mut self) {
         loop {
             #[cfg(feature = "twitch")]
-                let twitch_event_handler = |msg| match msg {
+            let twitch_event_handler = |msg| match msg {
                 Ok(event) => match event {
                     TwitchEvent::Ready(writer) => {
                         writer.join("stovoy").unwrap();
@@ -122,7 +122,7 @@ impl Bot {
                 Err(_) => None,
             };
             #[cfg(feature = "discord")]
-                let discord_event_handler = |msg| match msg {
+            let discord_event_handler = |msg| match msg {
                 Ok(event) => match event {
                     DiscordEvent::Ready => None,
                     DiscordEvent::Message(ctx, msg) => Some(Message {
@@ -196,12 +196,22 @@ impl Bot {
                 let action_error = match &command.actor {
                     None => None,
                     Some(actor) => match actor.0(&command, message) {
+                        // TODO: Add GetCommand and GetVariable which respond with the raw data.
                         Ok(action) => {
                             let action_error = match &action {
                                 Action::AddCommand(command) => {
                                     match self.commands.contains(command) {
                                         true => Some(ActionError::CommandAlreadyExists),
                                         false => None,
+                                    }
+                                }
+                                Action::EditCommand(command) => {
+                                    if !self.commands.contains(command) {
+                                        Some(ActionError::CommandDoesNotExist)
+                                    } else if self.is_builtin_command(command) {
+                                        Some(ActionError::CannotModifyBuiltInCommand)
+                                    } else {
+                                        None
                                     }
                                 }
                                 Action::DeleteCommand(command) => {
@@ -213,13 +223,24 @@ impl Bot {
                                         None
                                     }
                                 }
-                                Action::EditCommand(command) => {
-                                    if !self.commands.contains(command) {
-                                        Some(ActionError::CommandDoesNotExist)
-                                    } else if self.is_builtin_command(command) {
-                                        Some(ActionError::CannotModifyBuiltInCommand)
-                                    } else {
-                                        None
+                                Action::AddVariable(variable) => {
+                                    match self.database.get_variable(&variable.name) {
+                                        Ok(_) => Some(ActionError::VariableAlreadyExists),
+                                        Err(_) => None,
+                                    }
+                                }
+                                Action::EditVariable(variable) => {
+                                    // TODO: Catch other DB connection errors.
+                                    match self.database.get_variable(&variable.name) {
+                                        Ok(_) => None,
+                                        Err(_) => Some(ActionError::VariableDoesNotExist),
+                                    }
+                                }
+                                Action::DeleteVariable(variable) => {
+                                    // TODO: Catch other DB connection errors.
+                                    match self.database.get_variable(&variable.name) {
+                                        Ok(_) => None,
+                                        Err(_) => Some(ActionError::VariableDoesNotExist),
                                     }
                                 }
                             };
@@ -241,6 +262,9 @@ impl Bot {
             }
         };
 
+        // Deferred because it modifies self.commands,
+        // but it'd be nice to propagate these error messages properly.
+        // TODO: We could do the database bits first, then defer only adding to commands.
         let event = match deferred_action {
             None => None,
             Some(deferred_action) => match deferred_action {
@@ -251,6 +275,13 @@ impl Bot {
                     self.commands.update_command(&command);
                     Some(BotEvent::AddCommand(command, message.sender.clone()))
                 }
+                Action::EditCommand(command) => {
+                    if let Err(e) = self.database.update_command(&command) {
+                        println!("Error updating command {}: {}", command.trigger, e)
+                    }
+                    self.commands.update_command(&command);
+                    Some(BotEvent::EditCommand(command, message.sender.clone()))
+                }
                 Action::DeleteCommand(command) => {
                     if let Err(e) = self.database.delete_command(&command) {
                         println!("Error deleting command {}: {}", command.trigger, e)
@@ -258,12 +289,23 @@ impl Bot {
                     self.commands.delete_command(&command);
                     Some(BotEvent::DeleteCommand(command, message.sender.clone()))
                 }
-                Action::EditCommand(command) => {
-                    if let Err(e) = self.database.update_command(&command) {
-                        println!("Error updating command {}: {}", command.trigger, e)
+                Action::AddVariable(variable) => {
+                    if let Err(e) = self.database.set_variable(&variable) {
+                        println!("Error adding variable {}: {}", variable.name, e)
                     }
-                    self.commands.update_command(&command);
-                    Some(BotEvent::EditCommand(command, message.sender.clone()))
+                    Some(BotEvent::AddVariable(variable, message.sender.clone()))
+                }
+                Action::EditVariable(variable) => {
+                    if let Err(e) = self.database.set_variable(&variable) {
+                        println!("Error editing variable {}: {}", variable.name, e)
+                    }
+                    Some(BotEvent::EditVariable(variable, message.sender.clone()))
+                }
+                Action::DeleteVariable(variable) => {
+                    if let Err(e) = self.database.delete_variable(&variable) {
+                        println!("Error deleting variable {}: {}", variable.name, e)
+                    }
+                    Some(BotEvent::DeleteVariable(variable, message.sender.clone()))
                 }
             },
         };
