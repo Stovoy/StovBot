@@ -3,14 +3,14 @@ use std::io::Error;
 use std::process::Command;
 
 enum ScriptRunnerError {
-    TimeoutError,
-    CrashError,
-    IOError(Error),
+    Timeout,
+    Crash,
+    IO(Error),
 }
 
 impl From<Error> for ScriptRunnerError {
     fn from(e: Error) -> Self {
-        ScriptRunnerError::IOError(e)
+        ScriptRunnerError::IO(e)
     }
 }
 
@@ -21,9 +21,9 @@ pub fn run(script: &str, database_path: &str) -> String {
             result
         }
         Err(e) => match e {
-            ScriptRunnerError::TimeoutError => format!("Script Error: Timeout"),
-            ScriptRunnerError::CrashError => format!("Script Error: Crash"),
-            ScriptRunnerError::IOError(_) => format!("Script Error: IO"),
+            ScriptRunnerError::Timeout => "Script Error: Timeout".to_string(),
+            ScriptRunnerError::Crash => "Script Error: Crash".to_string(),
+            ScriptRunnerError::IO(_) => "Script Error: IO".to_string(),
         },
     }
 }
@@ -41,8 +41,8 @@ fn eval(script: &str, database_path: &str) -> Result<String, ScriptRunnerError> 
         .output()
         .unwrap();
     match output.status.code().unwrap() {
-        100 => Err(ScriptRunnerError::TimeoutError),
-        128 => Err(ScriptRunnerError::CrashError),
+        100 => Err(ScriptRunnerError::Timeout),
+        128 => Err(ScriptRunnerError::Crash),
         _ => Ok(output.stdout.iter().map(|c| *c as char).collect::<String>()),
     }
 }

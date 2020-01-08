@@ -14,13 +14,14 @@ use std::str::FromStr;
 use std::thread;
 use std::time::Duration;
 use std::{env, panic};
+use rusqlite::Error;
 
 mod database;
 mod models;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let script = args.iter().nth(1).unwrap().clone();
+    let script = args.get(1).unwrap().clone();
 
     let timeout = Duration::from_millis(1500);
     let (sender, receiver) = bounded(0);
@@ -165,7 +166,10 @@ impl ScriptFunction {
                     name
                 )),
             },
-            Err(_) => panic!(format!("Variable {} does not exist!", name)),
+            Err(e) => match e {
+                Error::QueryReturnedNoRows => panic!(format!("Variable {} does not exist!", name)),
+                _ => panic!(e)
+            }
         }
     }
 
@@ -195,7 +199,10 @@ impl ScriptFunction {
                     results
                 }
             },
-            Err(_) => panic!(format!("Variable {} does not exist!", name)),
+            Err(e) => match e {
+                Error::QueryReturnedNoRows => panic!(format!("Variable {} does not exist!", name)),
+                _ => panic!(e)
+            }
         }
     }
 }
@@ -229,8 +236,8 @@ impl From<f64> for i64 {
 }
 
 impl<T, U> Into<U> for T
-where
-    U: From<T>,
+    where
+        U: From<T>,
 {
     fn into(self) -> U {
         U::from(self)

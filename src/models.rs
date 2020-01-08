@@ -73,7 +73,7 @@ pub enum Source {
     #[cfg(feature = "twitch")]
     Twitch(TwitchWriter, String),
     #[cfg(feature = "discord")]
-    Discord(DiscordContext, DiscordMessage),
+    Discord(Box<DiscordContext>, Box<DiscordMessage>),
 }
 
 impl Command {

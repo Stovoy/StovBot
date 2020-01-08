@@ -94,18 +94,16 @@ impl Bot {
     fn is_builtin_command(&self, command: &Command) -> bool {
         Command::default_commands()
             .iter()
-            .find(|default_command| default_command.trigger == command.trigger)
-            .is_some()
+            .any(|default_command| default_command.trigger == command.trigger)
             || special_command::commands()
-                .iter()
-                .find(|special_command| special_command.trigger == command.trigger)
-                .is_some()
+            .iter()
+            .any(|special_command| special_command.trigger == command.trigger)
     }
 
     pub fn run(&mut self) {
         loop {
             #[cfg(feature = "twitch")]
-            let twitch_event_handler = |msg| match msg {
+                let twitch_event_handler = |msg| match msg {
                 Ok(event) => match event {
                     TwitchEvent::Ready(writer) => {
                         writer.join("stovoy").unwrap();
@@ -122,7 +120,7 @@ impl Bot {
                 Err(_) => None,
             };
             #[cfg(feature = "discord")]
-            let discord_event_handler = |msg| match msg {
+                let discord_event_handler = |msg| match msg {
                 Ok(event) => match event {
                     DiscordEvent::Ready => None,
                     DiscordEvent::Message(ctx, msg) => Some(Message {
@@ -200,9 +198,10 @@ impl Bot {
                         Ok(action) => {
                             let action_error = match &action {
                                 Action::AddCommand(command) => {
-                                    match self.commands.contains(command) {
-                                        true => Some(ActionError::CommandAlreadyExists),
-                                        false => None,
+                                    if self.commands.contains(command) {
+                                        Some(ActionError::CommandAlreadyExists)
+                                    } else {
+                                        None
                                     }
                                 }
                                 Action::EditCommand(command) => {

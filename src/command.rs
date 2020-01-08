@@ -71,7 +71,7 @@ impl CommandExt for Command {
 
     fn parse(&self, message: &Message) -> String {
         let text = message.after_trigger(&self.trigger);
-        let mut args = text.split(" ");
+        let mut args = text.split(' ');
         let mut lexer = Token::lexer(self.response.as_str());
         let mut response = "".to_string();
         let mut script = "".to_string();
@@ -146,7 +146,7 @@ impl CommandExt for Command {
             *accumulator += &script;
         }
 
-        return response;
+        response
     }
 }
 

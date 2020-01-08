@@ -115,7 +115,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let bot_twitch_event_receiver = twitch_event_receivers[0].clone();
 
     #[cfg(feature = "discord")]
-    let discord_event_receivers = connect_discord_thread(shared_state.clone(), secrets.clone());
+    let discord_event_receivers = connect_discord_thread(shared_state.clone(), secrets);
     #[cfg(feature = "discord")]
     let bot_discord_event_receiver = discord_event_receivers[0].clone();
 
@@ -170,13 +170,12 @@ fn connect_twitch_thread(
         twitch_event_receivers.push(r);
     }
 
-    let thread_shared_state = shared_state.clone();
     let twitch_token = secrets.twitch_token;
     thread::spawn(|| {
         let client = twitch::connect(twitch_token);
         let handler = twitch::Handler {
             senders: twitch_event_senders,
-            shared_state: thread_shared_state,
+            shared_state,
         };
         handler.listen(client);
     });
@@ -197,11 +196,10 @@ fn connect_discord_thread(
         discord_event_receivers.push(r);
     }
 
-    let thread_shared_state = shared_state.clone();
     let discord_token = secrets.discord_token;
     thread::spawn(|| {
         let mut discord_client =
-            discord::connect(discord_token, discord_event_senders, thread_shared_state);
+            discord::connect(discord_token, discord_event_senders, shared_state);
         if let Err(why) = discord_client.start_autosharded() {
             println!("Discord client error: {:?}", why);
         }
@@ -219,9 +217,8 @@ fn connect_admin_cli_thread(shared_state: Arc<Mutex<SharedState>>) -> Vec<Receiv
         admin_event_receivers.push(r);
     }
 
-    let thread_shared_state = shared_state.clone();
     thread::spawn(|| {
-        admin::cli_run(admin_event_senders, thread_shared_state);
+        admin::cli_run(admin_event_senders, shared_state);
     });
 
     admin_event_receivers
@@ -274,9 +271,8 @@ impl Stream for ConnectedState {
         ];
 
         for receiver in receivers.iter() {
-            match receiver(&self) {
-                Ok(poll) => return poll,
-                Err(_) => {}
+            if let Ok(poll) = receiver(&self) {
+                return poll
             };
         }
 
@@ -338,14 +334,14 @@ impl Debug for Event {
                 Event::TwitchEvent(e) => match e {
                     TwitchEvent::Ready(_) => "Twitch - Ready".to_string(),
                     TwitchEvent::PrivMsg(_, msg) => {
-                        format!("{}: {}", msg.user(), msg.message()).to_string()
+                        format!("{}: {}", msg.user(), msg.message())
                     }
                 },
                 #[cfg(feature = "discord")]
                 Event::DiscordEvent(e) => match e {
                     DiscordEvent::Ready => "Discord - Ready".to_string(),
                     DiscordEvent::Message(_, msg) => {
-                        format!("{}: {}", msg.author.name, msg.content).to_string()
+                        format!("{}: {}", msg.author.name, msg.content)
                     }
                 },
                 Event::AdminEvent(e) => match e {

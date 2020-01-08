@@ -53,10 +53,10 @@ fn edit_command(command: &Command, message: &Message) -> Result<Action, ActionEr
 
 fn delete_command(command: &Command, message: &Message) -> Result<Action, ActionError> {
     let command = message.after_trigger(&command.trigger);
-    if !command.starts_with("!") {
+    if !command.starts_with('!') {
         Err(ActionError::BadCommandTriggerPrefix)
     } else {
-        let trigger = command.split(" ").next().unwrap();
+        let trigger = command.split(' ').next().unwrap();
         Ok(Action::DeleteCommand(Command::new(
             trigger.to_string(),
             "".to_string(),
@@ -75,10 +75,10 @@ fn parse_command_message(
     } else {
         let trigger = parts[0];
         let response = parts[1..].join(" ");
-        if !trigger.starts_with("!") {
+        if !trigger.starts_with('!') {
             Err(ActionError::BadCommandTriggerPrefix)
         } else {
-            Ok((trigger.to_string(), response.to_string()))
+            Ok((trigger.to_string(), response))
         }
     }
 }
@@ -104,7 +104,7 @@ fn parse_variable_message(
 ) -> Result<(String, VariableValue), ActionError> {
     let variable = message.after_trigger(&command.trigger);
     let parts: Vec<&str> = variable.split(' ').collect();
-    if parts.len() == 0 {
+    if parts.is_empty() {
         Err(ActionError::BadVariable(variable.to_string()))
     } else if parts.len() == 1 {
         let name = parts[0];
@@ -112,6 +112,6 @@ fn parse_variable_message(
     } else {
         let name = parts[0];
         let value = parts[1..].join(" ");
-        Ok((name.to_string(), VariableValue::Text(value.to_string())))
+        Ok((name.to_string(), VariableValue::Text(value)))
     }
 }

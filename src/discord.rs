@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub enum DiscordEvent {
     Ready,
-    Message(Context, Message),
+    Message(Box<Context>, Box<Message>),
 }
 
 struct Handler {
@@ -31,7 +31,7 @@ impl Handler {
 
 impl EventHandler for Handler {
     fn message(&self, ctx: Context, msg: Message) {
-        self.send_event(DiscordEvent::Message(ctx, msg));
+        self.send_event(DiscordEvent::Message(Box::new(ctx), Box::new(msg)));
     }
 
     fn ready(&self, _: Context, _: Ready) {
@@ -44,14 +44,11 @@ pub fn connect(
     senders: Vec<channel::Sender<DiscordEvent>>,
     shared_state: Arc<Mutex<SharedState>>,
 ) -> Client {
-    let client = Client::new(
+    Client::new(
         &token,
         Handler {
             senders,
             shared_state,
         },
-    )
-    .expect("Err creating client");
-
-    client
+    ).expect("Err creating client")
 }
