@@ -123,7 +123,7 @@ impl Command {
                 "{{\
                 let quotes = get_list(\"quotes\"); \
                 let i = int(\"$1\"); if i == 0 { i = random_index(quotes) } else { i -= 1 } \
-                quotes[i]\
+                \"#\" + string(i + 1) + \": \" + quotes[i]\
                 }}".to_string(),
             ),
         ]
