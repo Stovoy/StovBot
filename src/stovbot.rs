@@ -317,8 +317,8 @@ impl Debug for Event {
                         user.username, command.trigger, command.response
                     ),
                     BotEvent::DeleteCommand(command, user) => format!(
-                        "Delete Command by {}: {}: {}",
-                        user.username, command.trigger, command.response
+                        "Delete Command by {}: {}",
+                        user.username, command.trigger
                     ),
                     BotEvent::LoadVariable(variable) => {
                         format!("Load Variable: {}: {}", variable.name, variable.value)
@@ -332,8 +332,8 @@ impl Debug for Event {
                         user.username, variable.name, variable.value
                     ),
                     BotEvent::DeleteVariable(variable, user) => format!(
-                        "Delete Variable by {}: {}: {}",
-                        user.username, variable.name, variable.value
+                        "Delete Variable by {}: {}",
+                        user.username, variable.name
                     ),
                 },
                 #[cfg(feature = "twitch")]
