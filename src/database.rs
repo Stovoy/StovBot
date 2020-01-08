@@ -19,10 +19,7 @@ impl Database {
             Some(path) => path,
             None => match env::var("WITH_DATABASE") {
                 Ok(value) => value,
-                Err(e) => {
-                    println!("{}", e);
-                    Database::default_path()
-                }
+                Err(e) => Database::default_path(),
             },
         };
         let connection = match path.as_ref() {
