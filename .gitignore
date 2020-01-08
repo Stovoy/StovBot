@@ -1,5 +1,6 @@
 /target
 **/*.rs.bk
+.stovbot/
 secrets.toml
 db.db3
 db_test_*.db3

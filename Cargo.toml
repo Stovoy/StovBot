@@ -18,7 +18,7 @@ path = "src/script_engine.rs"
 gui = ["iced", "iced_native", "iced_core"]
 discord = ["serenity"]
 twitch = ["twitchchat"]
-default = ["discord", "twitch", "gui"]
+default = ["discord", "twitch"]
 
 [dependencies]
 twitchchat = { version = "0.7.2", optional = true }
