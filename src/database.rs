@@ -15,7 +15,6 @@ pub struct Database {
 
 impl Database {
     pub fn connect(path: Option<String>) -> Result<Database, Error> {
-        // TODO: How to set an env var across all tests to default to in-memory?
         let path = match path {
             Some(path) => path,
             None => match env::var("WITH_DATABASE") {
@@ -48,13 +47,13 @@ impl Database {
 
     #[cfg(test)]
     fn new_in_memory() -> Result<Database, Error> {
-        let connection = Connection::open_in_memory()?;
-        let database = Database {
-            connection,
-            path: "MEMORY".to_string(),
-        };
+        let database = Database::connect(Some(Database::memory_path()))?;
         database.migrate()?;
         Ok(database)
+    }
+
+    pub fn memory_path() -> String {
+        "MEMORY".to_string()
     }
 
     pub fn default_path() -> String {
