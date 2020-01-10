@@ -1,6 +1,6 @@
-use crate::bot::SharedState;
 use crate::Event;
 use crossbeam::channel::Sender;
+use futures::task::Waker;
 use serenity::{
     model::{channel::Message, gateway::Ready},
     prelude::*,
@@ -15,14 +15,14 @@ pub enum DiscordEvent {
 
 struct Handler {
     sender: Sender<Event>,
-    shared_state: Arc<Mutex<SharedState>>,
+    stream_waker: Arc<Mutex<Option<Waker>>>,
 }
 
 impl Handler {
     fn send_event(&self, event: DiscordEvent) {
         self.sender.send(Event::DiscordEvent(event)).unwrap();
-        let mut shared_state = self.shared_state.lock().unwrap();
-        if let Some(waker) = shared_state.waker.take() {
+        let mut stream_waker = self.stream_waker.lock().unwrap();
+        if let Some(waker) = stream_waker.take() {
             waker.wake()
         }
     }
@@ -44,13 +44,13 @@ impl EventHandler for Handler {
 pub fn connect(
     token: String,
     sender: Sender<Event>,
-    shared_state: Arc<Mutex<SharedState>>,
+    stream_waker: Arc<Mutex<Option<Waker>>>,
 ) -> Client {
     Client::new(
         &token,
         Handler {
             sender,
-            shared_state,
+            stream_waker,
         },
     )
     .expect("Err creating client")

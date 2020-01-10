@@ -16,10 +16,6 @@ use rusqlite::Error;
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
 use std::sync::{Arc, Mutex};
 
-pub struct SharedState {
-    pub waker: Option<Waker>,
-}
-
 #[derive(Debug, Clone)]
 pub enum BotEvent {
     // On initial load from the database.
@@ -43,7 +39,7 @@ pub struct Bot {
 
     pub event_sender: Sender<Event>,
     pub event_rx: BusReader<Event>,
-    pub shared_state: Arc<Mutex<SharedState>>,
+    pub stream_waker: Arc<Mutex<Option<Waker>>>,
 
     pub database: Database,
 }
@@ -52,7 +48,7 @@ impl Bot {
     pub fn new(
         event_sender: Sender<Event>,
         event_rx: BusReader<Event>,
-        shared_state: Arc<Mutex<SharedState>>,
+        stream_waker: Arc<Mutex<Option<Waker>>>,
     ) -> Result<Bot, Error> {
         let database = Database::new()?;
         let mut commands = special_command::commands();
@@ -60,14 +56,14 @@ impl Bot {
         for command in commands.iter() {
             send_event(
                 &event_sender,
-                &shared_state,
+                &stream_waker,
                 BotEvent::LoadCommand(command.clone()),
             );
         }
         for variable in database.get_variables()? {
             send_event(
                 &event_sender,
-                &shared_state,
+                &stream_waker,
                 BotEvent::LoadVariable(variable),
             );
         }
@@ -76,7 +72,7 @@ impl Bot {
             commands: Commands::new(commands),
             event_sender,
             event_rx,
-            shared_state,
+            stream_waker,
             database,
         };
         Ok(stovbot)
@@ -303,7 +299,7 @@ impl Bot {
     }
 
     fn send_event(&self, event: BotEvent) {
-        send_event(&self.event_sender, &self.shared_state, event)
+        send_event(&self.event_sender, &self.stream_waker, event)
     }
 }
 
@@ -333,10 +329,10 @@ impl Message {
     }
 }
 
-fn send_event(sender: &Sender<Event>, shared_state: &Arc<Mutex<SharedState>>, event: BotEvent) {
+fn send_event(sender: &Sender<Event>, stream_waker: &Arc<Mutex<Option<Waker>>>, event: BotEvent) {
     sender.send(Event::BotEvent(event)).unwrap();
-    let mut shared_state = shared_state.lock().unwrap();
-    if let Some(waker) = shared_state.waker.take() {
+    let mut stream_waker = stream_waker.lock().unwrap();
+    if let Some(waker) = stream_waker.take() {
         waker.wake()
     }
 }

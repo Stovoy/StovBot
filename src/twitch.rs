@@ -1,7 +1,7 @@
-use crate::bot::SharedState;
 use crate::Event;
 use crossbeam::channel::Sender;
 use env_logger;
+use futures::task::Waker;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use twitchchat::{commands, Client, Message, UserConfig, Writer};
@@ -31,14 +31,14 @@ pub enum TwitchEvent {
 
 pub struct Handler {
     pub sender: Sender<Event>,
-    pub shared_state: Arc<Mutex<SharedState>>,
+    pub stream_waker: Arc<Mutex<Option<Waker>>>,
 }
 
 impl Handler {
     fn send_event(&self, event: TwitchEvent) {
         self.sender.send(Event::TwitchEvent(event)).unwrap();
-        let mut shared_state = self.shared_state.lock().unwrap();
-        if let Some(waker) = shared_state.waker.take() {
+        let mut stream_waker = self.stream_waker.lock().unwrap();
+        if let Some(waker) = stream_waker.take() {
             waker.wake()
         }
     }

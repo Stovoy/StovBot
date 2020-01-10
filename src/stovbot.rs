@@ -1,10 +1,10 @@
 use admin::AdminEvent;
-use bot::{Bot, BotEvent, SharedState};
+use bot::{Bot, BotEvent};
 use bus::{Bus, BusReader};
 use crossbeam::channel::{bounded, Sender};
 #[cfg(feature = "discord")]
 use discord::DiscordEvent;
-use futures::task::{Context, Poll};
+use futures::task::{Context, Poll, Waker};
 use futures::Stream;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
@@ -76,7 +76,7 @@ enum ConnectError {
 #[derive(Clone)]
 struct ConnectedState {
     event_rx: Arc<Mutex<BusReader<Event>>>,
-    shared_state: Arc<Mutex<SharedState>>,
+    stream_waker: Arc<Mutex<Option<Waker>>>,
 }
 
 // Can't derive debug on Arc, so implement our own.
@@ -99,7 +99,7 @@ async fn load_secrets() -> Result<Secrets, ConnectError> {
 const CHANNEL_SIZE: usize = 1024;
 
 async fn connect() -> Result<ConnectedState, ConnectError> {
-    let shared_state = Arc::new(Mutex::new(SharedState { waker: None }));
+    let stream_waker = Arc::new(Mutex::new(None));
     let (event_sender, dispatcher_rx) = bounded(CHANNEL_SIZE);
 
     let mut event_bus = Bus::new(CHANNEL_SIZE);
@@ -117,17 +117,17 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let secrets = load_secrets().await?;
 
     #[cfg(feature = "twitch")]
-    connect_twitch_thread(shared_state.clone(), secrets.clone(), event_sender.clone());
+    connect_twitch_thread(stream_waker.clone(), secrets.clone(), event_sender.clone());
 
     #[cfg(feature = "discord")]
-    connect_discord_thread(shared_state.clone(), secrets, event_sender.clone());
+    connect_discord_thread(stream_waker.clone(), secrets, event_sender.clone());
 
-    connect_admin_cli_thread(shared_state.clone(), event_sender.clone());
+    connect_admin_cli_thread(stream_waker.clone(), event_sender.clone());
 
-    let thread_shared_state = shared_state.clone();
+    let thread_stream_waker = stream_waker.clone();
 
     thread::spawn(
-        || match Bot::new(event_sender, bot_rx, thread_shared_state) {
+        || match Bot::new(event_sender, bot_rx, thread_stream_waker) {
             Ok(mut stovbot) => {
                 stovbot.run();
             }
@@ -139,13 +139,13 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
 
     Ok(ConnectedState {
         event_rx: Arc::new(Mutex::new(state_rx)),
-        shared_state,
+        stream_waker,
     })
 }
 
 #[cfg(feature = "twitch")]
 fn connect_twitch_thread(
-    shared_state: Arc<Mutex<SharedState>>,
+    stream_waker: Arc<Mutex<Option<Waker>>>,
     secrets: Secrets,
     sender: Sender<Event>,
 ) {
@@ -154,7 +154,7 @@ fn connect_twitch_thread(
         let client = twitch::connect(twitch_token);
         let handler = twitch::Handler {
             sender,
-            shared_state,
+            stream_waker,
         };
         handler.listen(client);
     });
@@ -162,22 +162,22 @@ fn connect_twitch_thread(
 
 #[cfg(feature = "discord")]
 fn connect_discord_thread(
-    shared_state: Arc<Mutex<SharedState>>,
+    stream_waker: Arc<Mutex<Option<Waker>>>,
     secrets: Secrets,
     sender: Sender<Event>,
 ) {
     let discord_token = secrets.discord_token;
     thread::spawn(|| {
-        let mut discord_client = discord::connect(discord_token, sender, shared_state);
+        let mut discord_client = discord::connect(discord_token, sender, stream_waker);
         if let Err(why) = discord_client.start_autosharded() {
             println!("Discord client error: {:?}", why);
         }
     });
 }
 
-fn connect_admin_cli_thread(shared_state: Arc<Mutex<SharedState>>, sender: Sender<Event>) {
+fn connect_admin_cli_thread(stream_waker: Arc<Mutex<Option<Waker>>>, sender: Sender<Event>) {
     thread::spawn(|| {
-        admin::cli_run(sender, shared_state);
+        admin::cli_run(sender, stream_waker);
     });
 }
 
@@ -188,8 +188,8 @@ impl Stream for ConnectedState {
         match self.event_rx.lock().unwrap().try_recv() {
             Ok(event) => Poll::Ready(Some(event)),
             Err(_) => {
-                let mut shared_state = self.shared_state.lock().unwrap();
-                shared_state.waker = Some(cx.waker().clone());
+                let mut stream_waker = self.stream_waker.lock().unwrap();
+                *stream_waker = Some(cx.waker().clone());
                 Poll::Pending
             }
         }
