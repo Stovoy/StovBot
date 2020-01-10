@@ -89,7 +89,7 @@ impl Bot {
 
     pub fn run(&mut self) {
         loop {
-            let message = match self.event_rx.try_recv() {
+            let message = match self.event_rx.recv() {
                 Ok(event) => match event {
                     Event::BotEvent(_) => None,
                     #[cfg(feature = "twitch")]
@@ -108,7 +108,7 @@ impl Bot {
                     },
                     #[cfg(feature = "discord")]
                     Event::DiscordEvent(event) => match event {
-                        DiscordEvent::Ready => None,
+                        DiscordEvent::Ready(_, _) => None,
                         DiscordEvent::Message(ctx, msg) => Some(Message {
                             sender: User {
                                 username: msg.author.name.to_string(),

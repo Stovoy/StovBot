@@ -8,6 +8,7 @@ use serenity::model::channel::Message as DiscordMessage;
 use serenity::prelude::Context as DiscordContext;
 use std::fmt::Debug;
 use std::fmt::Display;
+#[cfg(feature = "discord")]
 use std::sync::{Arc, Mutex};
 use time::Timespec;
 #[cfg(feature = "twitch")]
@@ -133,7 +134,7 @@ impl Command {
 
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "Timespec")]
-struct TimespecDef {
+pub struct TimespecDef {
     sec: i64,
     nsec: i32,
 }

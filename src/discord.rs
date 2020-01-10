@@ -1,6 +1,7 @@
 use crate::Event;
 use crossbeam::channel::Sender;
 use futures::task::Waker;
+use serenity::model::id::ChannelId;
 use serenity::{
     model::{channel::Message, gateway::Ready},
     prelude::*,
@@ -9,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub enum DiscordEvent {
-    Ready,
+    Ready(Box<Arc<Mutex<Context>>>, ChannelId),
     Message(Box<Arc<Mutex<Context>>>, Box<Message>),
 }
 
@@ -36,8 +37,22 @@ impl EventHandler for Handler {
         ));
     }
 
-    fn ready(&self, _: Context, _: Ready) {
-        self.send_event(DiscordEvent::Ready);
+    fn ready(&self, ctx: Context, msg: Ready) {
+        let mut notification_channel_id = None;
+        for guild_status in msg.guilds.iter() {
+            for channel in guild_status.id().channels(ctx.http.clone()).unwrap() {
+                if channel.1.name == "stream-is-on" {
+                    notification_channel_id = Some(channel.1.id);
+                    break;
+                }
+            }
+        }
+        match notification_channel_id {
+            None => panic!("Could not find stream-is-on channel"),
+            Some(id) => {
+                self.send_event(DiscordEvent::Ready(Box::new(Arc::new(Mutex::new(ctx))), id))
+            }
+        }
     }
 }
 

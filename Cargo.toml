@@ -1,6 +1,6 @@
 [package]
 name = "stovbot"
-version = "0.12.0"
+version = "0.13.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
 default-run = "stovbot"
@@ -21,11 +21,13 @@ lto = false
 # Include the Iced UI.
 gui = ["iced", "iced_native", "iced_core"]
 discord = ["serenity"]
-twitch = ["twitchchat"]
+twitch = ["twitchchat", "reqwest", "chrono"]
 default = ["discord", "twitch"]
 
 [dependencies]
 twitchchat = { version = "0.7.2", optional = true }
+reqwest = { version = "0.10.1", optional = true, features = ["blocking", "json"] }
+chrono = { version = "0.4.10", optional = true}
 toml = "0.5"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

@@ -17,6 +17,8 @@ use std::thread;
 use twitch::TwitchEvent;
 
 mod admin;
+#[cfg(all(feature = "discord", feature = "twitch"))]
+mod background;
 mod bot;
 mod command;
 pub mod database;
@@ -39,6 +41,7 @@ use futures::stream::{BoxStream, StreamExt};
 #[derive(Deserialize, Debug, Clone)]
 struct Secrets {
     twitch_token: String,
+    twitch_client_id: String,
     discord_token: String,
 }
 
@@ -106,6 +109,9 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let bot_rx = event_bus.add_rx();
     let state_rx = event_bus.add_rx();
 
+    #[cfg(all(feature = "discord", feature = "twitch"))]
+    let background_rx = event_bus.add_rx();
+
     // Channel dispatcher.
     thread::spawn(move || {
         for message in dispatcher_rx.iter() {
@@ -120,9 +126,12 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     connect_twitch_thread(stream_waker.clone(), secrets.clone(), event_sender.clone());
 
     #[cfg(feature = "discord")]
-    connect_discord_thread(stream_waker.clone(), secrets, event_sender.clone());
+    connect_discord_thread(stream_waker.clone(), secrets.clone(), event_sender.clone());
 
     connect_admin_cli_thread(stream_waker.clone(), event_sender.clone());
+
+    #[cfg(all(feature = "discord", feature = "twitch"))]
+    connect_background_thread(secrets, background_rx);
 
     let thread_stream_waker = stream_waker.clone();
 
@@ -178,6 +187,14 @@ fn connect_discord_thread(
 fn connect_admin_cli_thread(stream_waker: Arc<Mutex<Option<Waker>>>, sender: Sender<Event>) {
     thread::spawn(|| {
         admin::cli_run(sender, stream_waker);
+    });
+}
+
+#[cfg(all(feature = "discord", feature = "twitch"))]
+fn connect_background_thread(secrets: Secrets, event_rx: BusReader<Event>) {
+    let twitch_client_id = secrets.twitch_client_id;
+    thread::spawn(|| {
+        background::run(twitch_client_id, event_rx);
     });
 }
 
@@ -252,7 +269,7 @@ impl Debug for Event {
                 },
                 #[cfg(feature = "discord")]
                 Event::DiscordEvent(e) => match e {
-                    DiscordEvent::Ready => "Discord - Ready".to_string(),
+                    DiscordEvent::Ready(_, _) => "Discord - Ready".to_string(),
                     DiscordEvent::Message(_, msg) => {
                         format!("{}: {}", msg.author.name, msg.content)
                     }
