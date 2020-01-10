@@ -1,7 +1,7 @@
 use admin::AdminEvent;
 use bot::{Bot, BotEvent, SharedState};
-use crossbeam::channel;
-use crossbeam::channel::Receiver;
+use bus::{Bus, BusReader};
+use crossbeam::channel::{bounded, Sender};
 #[cfg(feature = "discord")]
 use discord::DiscordEvent;
 use futures::task::{Context, Poll};
@@ -31,7 +31,6 @@ mod twitch;
 #[cfg(feature = "gui")]
 mod gui;
 
-use crossbeam::channel::TryRecvError;
 #[cfg(not(feature = "gui"))]
 use futures::executor::block_on;
 #[cfg(not(feature = "gui"))]
@@ -76,12 +75,7 @@ enum ConnectError {
 
 #[derive(Clone)]
 struct ConnectedState {
-    bot_event_receiver: Receiver<BotEvent>,
-    #[cfg(feature = "twitch")]
-    twitch_event_receiver: Receiver<TwitchEvent>,
-    #[cfg(feature = "discord")]
-    discord_event_receiver: Receiver<DiscordEvent>,
-    admin_event_receiver: Receiver<AdminEvent>,
+    event_rx: Arc<Mutex<BusReader<Event>>>,
     shared_state: Arc<Mutex<SharedState>>,
 }
 
@@ -106,53 +100,45 @@ const CHANNEL_SIZE: usize = 1024;
 
 async fn connect() -> Result<ConnectedState, ConnectError> {
     let shared_state = Arc::new(Mutex::new(SharedState { waker: None }));
+    let (event_sender, dispatcher_rx) = bounded(CHANNEL_SIZE);
+
+    let mut event_bus = Bus::new(CHANNEL_SIZE);
+    let bot_rx = event_bus.add_rx();
+    let state_rx = event_bus.add_rx();
+
+    // Channel dispatcher.
+    thread::spawn(move || {
+        for message in dispatcher_rx.iter() {
+            event_bus.broadcast(message);
+        }
+    });
 
     #[cfg(any(feature = "twitch", feature = "discord"))]
     let secrets = load_secrets().await?;
+
     #[cfg(feature = "twitch")]
-    let twitch_event_receivers = connect_twitch_thread(shared_state.clone(), secrets.clone());
-    #[cfg(feature = "twitch")]
-    let bot_twitch_event_receiver = twitch_event_receivers[0].clone();
+    connect_twitch_thread(shared_state.clone(), secrets.clone(), event_sender.clone());
 
     #[cfg(feature = "discord")]
-    let discord_event_receivers = connect_discord_thread(shared_state.clone(), secrets);
-    #[cfg(feature = "discord")]
-    let bot_discord_event_receiver = discord_event_receivers[0].clone();
+    connect_discord_thread(shared_state.clone(), secrets, event_sender.clone());
 
-    let admin_event_receivers = connect_admin_cli_thread(shared_state.clone());
-    let bot_admin_event_receiver = admin_event_receivers[0].clone();
-
-    let (bot_event_sender, bot_event_receiver) = channel::bounded(CHANNEL_SIZE);
+    connect_admin_cli_thread(shared_state.clone(), event_sender.clone());
 
     let thread_shared_state = shared_state.clone();
 
-    thread::spawn(|| {
-        match Bot::new(
-            bot_event_sender,
-            #[cfg(feature = "twitch")]
-            bot_twitch_event_receiver,
-            #[cfg(feature = "discord")]
-            bot_discord_event_receiver,
-            bot_admin_event_receiver,
-            thread_shared_state,
-        ) {
+    thread::spawn(
+        || match Bot::new(event_sender, bot_rx, thread_shared_state) {
             Ok(mut stovbot) => {
                 stovbot.run();
             }
             Err(e) => {
                 println!("Error running bot: {}", e);
             }
-        }
-    });
+        },
+    );
 
     Ok(ConnectedState {
-        bot_event_receiver,
-        #[cfg(feature = "twitch")]
-        twitch_event_receiver: twitch_event_receivers[1].clone(),
-        #[cfg(feature = "discord")]
-        discord_event_receiver: discord_event_receivers[1].clone(),
-        admin_event_receiver: admin_event_receivers[1].clone(),
-
+        event_rx: Arc::new(Mutex::new(state_rx)),
         shared_state,
     })
 }
@@ -161,123 +147,52 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
 fn connect_twitch_thread(
     shared_state: Arc<Mutex<SharedState>>,
     secrets: Secrets,
-) -> Vec<Receiver<TwitchEvent>> {
-    let mut twitch_event_senders = Vec::new();
-    let mut twitch_event_receivers = Vec::new();
-    for _ in 0..2 {
-        let (s, r) = channel::bounded(CHANNEL_SIZE);
-        twitch_event_senders.push(s);
-        twitch_event_receivers.push(r);
-    }
-
+    sender: Sender<Event>,
+) {
     let twitch_token = secrets.twitch_token;
     thread::spawn(|| {
         let client = twitch::connect(twitch_token);
         let handler = twitch::Handler {
-            senders: twitch_event_senders,
+            sender,
             shared_state,
         };
         handler.listen(client);
     });
-
-    twitch_event_receivers
 }
 
 #[cfg(feature = "discord")]
 fn connect_discord_thread(
     shared_state: Arc<Mutex<SharedState>>,
     secrets: Secrets,
-) -> Vec<Receiver<DiscordEvent>> {
-    let mut discord_event_senders = Vec::new();
-    let mut discord_event_receivers = Vec::new();
-    for _ in 0..2 {
-        let (s, r) = channel::bounded(CHANNEL_SIZE);
-        discord_event_senders.push(s);
-        discord_event_receivers.push(r);
-    }
-
+    sender: Sender<Event>,
+) {
     let discord_token = secrets.discord_token;
     thread::spawn(|| {
-        let mut discord_client =
-            discord::connect(discord_token, discord_event_senders, shared_state);
+        let mut discord_client = discord::connect(discord_token, sender, shared_state);
         if let Err(why) = discord_client.start_autosharded() {
             println!("Discord client error: {:?}", why);
         }
     });
-
-    discord_event_receivers
 }
 
-fn connect_admin_cli_thread(shared_state: Arc<Mutex<SharedState>>) -> Vec<Receiver<AdminEvent>> {
-    let mut admin_event_senders = Vec::new();
-    let mut admin_event_receivers = Vec::new();
-    for _ in 0..2 {
-        let (s, r) = channel::bounded(CHANNEL_SIZE);
-        admin_event_senders.push(s);
-        admin_event_receivers.push(r);
-    }
-
+fn connect_admin_cli_thread(shared_state: Arc<Mutex<SharedState>>, sender: Sender<Event>) {
     thread::spawn(|| {
-        admin::cli_run(admin_event_senders, shared_state);
+        admin::cli_run(sender, shared_state);
     });
-
-    admin_event_receivers
-}
-
-impl ConnectedState {
-    fn bot_receiver(&self) -> Result<Poll<Option<Event>>, TryRecvError> {
-        match self.bot_event_receiver.try_recv() {
-            Ok(e) => Ok(Poll::Ready(Some(Event::BotEvent(e)))),
-            Err(e) => Err(e),
-        }
-    }
-
-    #[cfg(feature = "twitch")]
-    fn twitch_receiver(&self) -> Result<Poll<Option<Event>>, TryRecvError> {
-        match self.twitch_event_receiver.try_recv() {
-            Ok(e) => Ok(Poll::Ready(Some(Event::TwitchEvent(e)))),
-            Err(e) => Err(e),
-        }
-    }
-
-    #[cfg(feature = "discord")]
-    fn discord_receiver(&self) -> Result<Poll<Option<Event>>, TryRecvError> {
-        match self.discord_event_receiver.try_recv() {
-            Ok(e) => Ok(Poll::Ready(Some(Event::DiscordEvent(e)))),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn admin_receiver(&self) -> Result<Poll<Option<Event>>, TryRecvError> {
-        match self.admin_event_receiver.try_recv() {
-            Ok(e) => Ok(Poll::Ready(Some(Event::AdminEvent(e)))),
-            Err(e) => Err(e),
-        }
-    }
 }
 
 impl Stream for ConnectedState {
     type Item = Event;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let mut shared_state = self.shared_state.lock().unwrap();
-        let receivers = [
-            ConnectedState::bot_receiver,
-            #[cfg(feature = "twitch")]
-            ConnectedState::twitch_receiver,
-            #[cfg(feature = "discord")]
-            ConnectedState::discord_receiver,
-            ConnectedState::admin_receiver,
-        ];
-
-        for receiver in receivers.iter() {
-            if let Ok(poll) = receiver(&self) {
-                return poll;
-            };
+        match self.event_rx.lock().unwrap().try_recv() {
+            Ok(event) => Poll::Ready(Some(event)),
+            Err(_) => {
+                let mut shared_state = self.shared_state.lock().unwrap();
+                shared_state.waker = Some(cx.waker().clone());
+                Poll::Pending
+            }
         }
-
-        shared_state.waker = Some(cx.waker().clone());
-        Poll::Pending
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

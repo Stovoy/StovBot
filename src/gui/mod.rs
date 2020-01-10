@@ -12,7 +12,7 @@ pub fn run() {
     BotGui::run(Settings::default())
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct BotGui {
     events: Vec<Event>,
     events_scroll: scrollable::State,

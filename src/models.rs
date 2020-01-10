@@ -8,6 +8,7 @@ use serenity::model::channel::Message as DiscordMessage;
 use serenity::prelude::Context as DiscordContext;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::sync::{Arc, Mutex};
 use time::Timespec;
 #[cfg(feature = "twitch")]
 use twitchchat::Writer as TwitchWriter;
@@ -73,7 +74,7 @@ pub enum Source {
     #[cfg(feature = "twitch")]
     Twitch(TwitchWriter, String),
     #[cfg(feature = "discord")]
-    Discord(Box<DiscordContext>, Box<DiscordMessage>),
+    Discord(Box<Arc<Mutex<DiscordContext>>>, Box<DiscordMessage>),
 }
 
 impl Command {

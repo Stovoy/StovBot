@@ -1,15 +1,16 @@
 use crate::bot::SharedState;
-use crossbeam::channel;
+use crate::Event;
+use crossbeam::channel::Sender;
 use env_logger;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
-use twitchchat::*;
+use twitchchat::{commands, Client, Message, UserConfig, Writer};
 
 pub fn connect(token: String) -> Client<TcpStream> {
     env_logger::init().unwrap();
 
     twitchchat::connect(
-        twitchchat::UserConfig::builder()
+        UserConfig::builder()
             .membership()
             .commands()
             .tags()
@@ -29,15 +30,13 @@ pub enum TwitchEvent {
 }
 
 pub struct Handler {
-    pub senders: Vec<channel::Sender<TwitchEvent>>,
+    pub sender: Sender<Event>,
     pub shared_state: Arc<Mutex<SharedState>>,
 }
 
 impl Handler {
     fn send_event(&self, event: TwitchEvent) {
-        self.senders
-            .iter()
-            .for_each(|s| s.send(event.clone()).unwrap());
+        self.sender.send(Event::TwitchEvent(event)).unwrap();
         let mut shared_state = self.shared_state.lock().unwrap();
         if let Some(waker) = shared_state.waker.take() {
             waker.wake()
@@ -48,14 +47,14 @@ impl Handler {
         let writer = client.writer();
         for event in client {
             match event {
-                Event::TwitchReady(_) => {
+                twitchchat::Event::TwitchReady(_) => {
                     self.send_event(TwitchEvent::Ready(writer.clone()));
                 }
-                Event::Message(Message::PrivMsg(msg)) => {
+                twitchchat::Event::Message(Message::PrivMsg(msg)) => {
                     self.send_event(TwitchEvent::PrivMsg(writer.clone(), msg));
                 }
-                Event::Message(Message::Irc(_)) => {}
-                Event::Error(err) => {
+                twitchchat::Event::Message(Message::Irc(_)) => {}
+                twitchchat::Event::Error(err) => {
                     eprintln!("error: {}", err);
                     break;
                 }

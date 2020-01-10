@@ -2,8 +2,7 @@
 
 use crate::database::Database;
 use crate::models::{Variable, VariableValue};
-use crossbeam::channel::bounded;
-use crossbeam::channel::RecvTimeoutError;
+use crossbeam::channel::{bounded, RecvTimeoutError};
 use rand::Rng;
 use rhai::{Any, AnyExt, Engine, EvalAltResult, RegisterFn};
 use rusqlite::Error;

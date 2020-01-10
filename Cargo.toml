@@ -13,6 +13,10 @@ path = "src/stovbot.rs"
 name = "script_engine"
 path = "src/script_engine.rs"
 
+[profile.dev]
+opt-level = 0
+lto = false
+
 [features]
 # Include the Iced UI.
 gui = ["iced", "iced_native", "iced_core"]
@@ -36,6 +40,7 @@ rhai = { git = "https://github.com/stovoy/rhai", branch = "master" }
 rand = "0.7.2"
 rusqlite = "0.21.0"
 time = "0.1.0"
+bus = "2.2.2"
 
 # Optional dependencies
 iced = { git = "https://github.com/hecrj/iced", branch = "master", optional = true}
