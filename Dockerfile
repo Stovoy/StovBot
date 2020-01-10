@@ -18,6 +18,8 @@ RUN \
 FROM debian:buster@sha256:f19be6b8095d6ea46f5345e2651eec4e5ee9e84fc83f3bc3b73587197853dc9e
 WORKDIR /app
 ENTRYPOINT ["/stovbot"]
-RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y sqlite3 openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=build /script_engine /script_engine
 COPY --from=build /stovbot /stovbot
