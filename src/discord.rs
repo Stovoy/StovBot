@@ -1,6 +1,4 @@
-use crate::Event;
-use crossbeam::channel::Sender;
-use futures::task::Waker;
+use crate::{Event, EventSender};
 use serenity::model::id::ChannelId;
 use serenity::{
     model::{channel::Message, gateway::Ready},
@@ -15,26 +13,15 @@ pub enum DiscordEvent {
 }
 
 struct Handler {
-    sender: Sender<Event>,
-    stream_waker: Arc<Mutex<Option<Waker>>>,
-}
-
-impl Handler {
-    fn send_event(&self, event: DiscordEvent) {
-        self.sender.send(Event::DiscordEvent(event)).unwrap();
-        let mut stream_waker = self.stream_waker.lock().unwrap();
-        if let Some(waker) = stream_waker.take() {
-            waker.wake()
-        }
-    }
+    sender: EventSender,
 }
 
 impl EventHandler for Handler {
     fn message(&self, ctx: Context, msg: Message) {
-        self.send_event(DiscordEvent::Message(
+        self.sender.send(Event::DiscordEvent(DiscordEvent::Message(
             Box::new(Arc::new(Mutex::new(ctx))),
             Box::new(msg),
-        ));
+        )));
     }
 
     fn ready(&self, ctx: Context, msg: Ready) {
@@ -50,23 +37,15 @@ impl EventHandler for Handler {
         match notification_channel_id {
             None => panic!("Could not find stream-is-on channel"),
             Some(id) => {
-                self.send_event(DiscordEvent::Ready(Box::new(Arc::new(Mutex::new(ctx))), id))
+                self.sender.send(Event::DiscordEvent(DiscordEvent::Ready(
+                    Box::new(Arc::new(Mutex::new(ctx))),
+                    id,
+                )));
             }
         }
     }
 }
 
-pub fn connect(
-    token: String,
-    sender: Sender<Event>,
-    stream_waker: Arc<Mutex<Option<Waker>>>,
-) -> Client {
-    Client::new(
-        &token,
-        Handler {
-            sender,
-            stream_waker,
-        },
-    )
-    .expect("Err creating client")
+pub fn connect(token: String, sender: EventSender) -> Client {
+    Client::new(&token, Handler { sender }).expect("Err creating client")
 }

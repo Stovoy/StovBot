@@ -102,8 +102,11 @@ async fn load_secrets() -> Result<Secrets, ConnectError> {
 const CHANNEL_SIZE: usize = 1024;
 
 async fn connect() -> Result<ConnectedState, ConnectError> {
-    let stream_waker = Arc::new(Mutex::new(None));
-    let (event_sender, dispatcher_rx) = bounded(CHANNEL_SIZE);
+    let (sender, dispatcher_rx) = bounded(CHANNEL_SIZE);
+    let event_sender = EventSender {
+        stream_waker: Arc::new(Mutex::new(None)),
+        sender,
+    };
 
     let mut event_bus = Bus::new(CHANNEL_SIZE);
     let bot_rx = event_bus.add_rx();
@@ -123,59 +126,64 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     let secrets = load_secrets().await?;
 
     #[cfg(feature = "twitch")]
-    connect_twitch_thread(stream_waker.clone(), secrets.clone(), event_sender.clone());
+    connect_twitch_thread(secrets.clone(), event_sender.clone());
 
     #[cfg(feature = "discord")]
-    connect_discord_thread(stream_waker.clone(), secrets.clone(), event_sender.clone());
+    connect_discord_thread(secrets.clone(), event_sender.clone());
 
-    connect_admin_cli_thread(stream_waker.clone(), event_sender.clone());
+    connect_admin_cli_thread(event_sender.clone());
 
     #[cfg(all(feature = "discord", feature = "twitch"))]
     connect_background_thread(secrets, background_rx);
 
-    connect_bot_thread(stream_waker.clone(), event_sender.clone(), bot_rx);
+    connect_bot_thread(event_sender.clone(), bot_rx);
 
     Ok(ConnectedState {
         event_rx: Arc::new(Mutex::new(state_rx)),
-        stream_waker,
+        stream_waker: event_sender.stream_waker.clone(),
     })
 }
 
-#[cfg(feature = "twitch")]
-fn connect_twitch_thread(
+#[derive(Clone)]
+pub struct EventSender {
     stream_waker: Arc<Mutex<Option<Waker>>>,
-    secrets: Secrets,
     sender: Sender<Event>,
-) {
+}
+
+impl EventSender {
+    pub fn send(&self, event: Event) {
+        self.sender.send(event).unwrap();
+        let mut stream_waker = self.stream_waker.lock().unwrap();
+        if let Some(waker) = stream_waker.take() {
+            waker.wake()
+        }
+    }
+}
+
+#[cfg(feature = "twitch")]
+fn connect_twitch_thread(secrets: Secrets, sender: EventSender) {
     let twitch_token = secrets.twitch_token;
     thread::spawn(|| {
         let client = twitch::connect(twitch_token);
-        let handler = twitch::Handler {
-            sender,
-            stream_waker,
-        };
+        let handler = twitch::Handler { sender };
         handler.listen(client);
     });
 }
 
 #[cfg(feature = "discord")]
-fn connect_discord_thread(
-    stream_waker: Arc<Mutex<Option<Waker>>>,
-    secrets: Secrets,
-    sender: Sender<Event>,
-) {
+fn connect_discord_thread(secrets: Secrets, sender: EventSender) {
     let discord_token = secrets.discord_token;
     thread::spawn(|| {
-        let mut discord_client = discord::connect(discord_token, sender, stream_waker);
+        let mut discord_client = discord::connect(discord_token, sender);
         if let Err(why) = discord_client.start_autosharded() {
             println!("Discord client error: {:?}", why);
         }
     });
 }
 
-fn connect_admin_cli_thread(stream_waker: Arc<Mutex<Option<Waker>>>, sender: Sender<Event>) {
+fn connect_admin_cli_thread(sender: EventSender) {
     thread::spawn(|| {
-        admin::cli_run(sender, stream_waker);
+        admin::cli_run(sender);
     });
 }
 
@@ -187,12 +195,8 @@ fn connect_background_thread(secrets: Secrets, event_rx: BusReader<Event>) {
     });
 }
 
-fn connect_bot_thread(
-    stream_waker: Arc<Mutex<Option<Waker>>>,
-    sender: Sender<Event>,
-    event_rx: BusReader<Event>,
-) {
-    thread::spawn(|| match Bot::new(sender, event_rx, stream_waker) {
+fn connect_bot_thread(sender: EventSender, event_rx: BusReader<Event>) {
+    thread::spawn(|| match Bot::new(sender, event_rx) {
         Ok(mut stovbot) => {
             stovbot.run();
         }

@@ -7,14 +7,11 @@ use crate::discord::DiscordEvent;
 use crate::models::{Action, ActionError, Command, Message, Source, User, Variable};
 #[cfg(feature = "twitch")]
 use crate::twitch::TwitchEvent;
-use crate::{special_command, Event};
+use crate::{special_command, Event, EventSender};
 use bus::BusReader;
-use crossbeam::channel::Sender;
-use futures::task::Waker;
 use rusqlite::Error;
 #[cfg(feature = "discord")]
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone)]
 pub enum BotEvent {
@@ -37,42 +34,28 @@ pub struct Bot {
     pub username: String,
     pub commands: Commands,
 
-    pub event_sender: Sender<Event>,
+    pub sender: EventSender,
     pub event_rx: BusReader<Event>,
-    pub stream_waker: Arc<Mutex<Option<Waker>>>,
 
     pub database: Database,
 }
 
 impl Bot {
-    pub fn new(
-        event_sender: Sender<Event>,
-        event_rx: BusReader<Event>,
-        stream_waker: Arc<Mutex<Option<Waker>>>,
-    ) -> Result<Bot, Error> {
+    pub fn new(sender: EventSender, event_rx: BusReader<Event>) -> Result<Bot, Error> {
         let database = Database::new()?;
         let mut commands = special_command::commands();
         commands.append(database.get_commands()?.as_mut());
         for command in commands.iter() {
-            send_event(
-                &event_sender,
-                &stream_waker,
-                BotEvent::LoadCommand(command.clone()),
-            );
+            sender.send(Event::BotEvent(BotEvent::LoadCommand(command.clone())));
         }
         for variable in database.get_variables()? {
-            send_event(
-                &event_sender,
-                &stream_waker,
-                BotEvent::LoadVariable(variable),
-            );
+            sender.send(Event::BotEvent(BotEvent::LoadVariable(variable)));
         }
         let stovbot = Bot {
             username: "StovBot".to_string(),
             commands: Commands::new(commands),
-            event_sender,
+            sender,
             event_rx,
-            stream_waker,
             database,
         };
         Ok(stovbot)
@@ -273,7 +256,7 @@ impl Bot {
 
         match event {
             None => {}
-            Some(event) => self.send_event(event),
+            Some(event) => self.sender.send(Event::BotEvent(event)),
         };
 
         response
@@ -296,10 +279,6 @@ impl Bot {
                 }
             }
         }
-    }
-
-    fn send_event(&self, event: BotEvent) {
-        send_event(&self.event_sender, &self.stream_waker, event)
     }
 }
 
@@ -326,13 +305,5 @@ impl Message {
             let (_, text) = self.text.split_at(trigger.len() + 1);
             text
         }
-    }
-}
-
-fn send_event(sender: &Sender<Event>, stream_waker: &Arc<Mutex<Option<Waker>>>, event: BotEvent) {
-    sender.send(Event::BotEvent(event)).unwrap();
-    let mut stream_waker = stream_waker.lock().unwrap();
-    if let Some(waker) = stream_waker.take() {
-        waker.wake()
     }
 }
