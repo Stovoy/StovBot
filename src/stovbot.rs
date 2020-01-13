@@ -133,18 +133,7 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
     #[cfg(all(feature = "discord", feature = "twitch"))]
     connect_background_thread(secrets, background_rx);
 
-    let thread_stream_waker = stream_waker.clone();
-
-    thread::spawn(
-        || match Bot::new(event_sender, bot_rx, thread_stream_waker) {
-            Ok(mut stovbot) => {
-                stovbot.run();
-            }
-            Err(e) => {
-                println!("Error running bot: {}", e);
-            }
-        },
-    );
+    connect_bot_thread(stream_waker.clone(), event_sender.clone(), bot_rx);
 
     Ok(ConnectedState {
         event_rx: Arc::new(Mutex::new(state_rx)),
@@ -195,6 +184,21 @@ fn connect_background_thread(secrets: Secrets, event_rx: BusReader<Event>) {
     let twitch_client_id = secrets.twitch_client_id;
     thread::spawn(|| {
         background::run(twitch_client_id, event_rx);
+    });
+}
+
+fn connect_bot_thread(
+    stream_waker: Arc<Mutex<Option<Waker>>>,
+    sender: Sender<Event>,
+    event_rx: BusReader<Event>,
+) {
+    thread::spawn(|| match Bot::new(sender, event_rx, stream_waker) {
+        Ok(mut stovbot) => {
+            stovbot.run();
+        }
+        Err(e) => {
+            println!("Error running bot: {}", e);
+        }
     });
 }
 
