@@ -2,16 +2,12 @@ use crate::database::Database;
 use serde::export::fmt::Error;
 use serde::export::Formatter;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "discord")]
 use serenity::model::channel::Message as DiscordMessage;
-#[cfg(feature = "discord")]
 use serenity::prelude::Context as DiscordContext;
 use std::fmt::Debug;
 use std::fmt::Display;
-#[cfg(feature = "discord")]
 use std::sync::{Arc, Mutex};
 use time::Timespec;
-#[cfg(feature = "twitch")]
 use twitchchat::Writer as TwitchWriter;
 
 // Note: Wrapped in struct so that we can implement Debug on it.
@@ -47,13 +43,16 @@ pub enum ActionError {
     VariableDoesNotExist,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Command {
     pub id: i32,
+    #[serde(with = "TimespecDef")]
     pub time_created: Timespec,
     pub trigger: String,
     pub response: String,
+    #[serde(skip)]
     pub actor: Option<Actor>,
+    #[serde(skip)]
     pub database_path: String,
 }
 
@@ -63,7 +62,7 @@ pub struct Message {
     pub source: Source,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub username: String,
 }
@@ -72,9 +71,7 @@ pub enum Source {
     #[cfg(test)]
     None,
     Admin,
-    #[cfg(feature = "twitch")]
     Twitch(TwitchWriter, String),
-    #[cfg(feature = "discord")]
     Discord(Box<Arc<Mutex<DiscordContext>>>, Box<DiscordMessage>),
 }
 

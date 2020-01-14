@@ -1,4 +1,4 @@
-use crate::{Event, EventSender};
+use crate::{Event, EventBusSender};
 use env_logger;
 use std::net::TcpStream;
 use twitchchat::{commands, Client, Message, UserConfig, Writer};
@@ -27,7 +27,7 @@ pub enum TwitchEvent {
 }
 
 pub struct Handler {
-    pub sender: EventSender,
+    pub sender: EventBusSender,
 }
 
 impl Handler {

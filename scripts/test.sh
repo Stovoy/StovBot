@@ -1,7 +1,10 @@
 #!/bin/bash -eu
-# For efficient testing.
+# Run checks, unit tests, and linters.
 
 set -o pipefail
 
-cargo build --bin script_engine --no-default-features
-cargo test --no-default-features
+cargo check
+cargo check --all-features
+cargo build --bin script_engine --all-features
+cargo test --all-features
+cargo clippy

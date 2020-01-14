@@ -1,4 +1,4 @@
-use crate::{Event, EventSender};
+use crate::{Event, EventBusSender};
 use std::io;
 
 #[derive(Debug, Clone)]
@@ -6,7 +6,7 @@ pub enum AdminEvent {
     Message(String),
 }
 
-pub fn cli_run(sender: EventSender) {
+pub fn cli_run(sender: EventBusSender) {
     loop {
         let mut buffer = String::new();
         io::stdin().read_line(&mut buffer).unwrap();

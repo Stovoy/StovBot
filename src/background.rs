@@ -1,7 +1,7 @@
 use crate::discord::DiscordEvent;
 use crate::Event;
-use bus::BusReader;
 use chrono::NaiveDateTime;
+use crossbeam::channel::Receiver;
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use std::thread;
@@ -33,12 +33,11 @@ struct TwitchStreamStatusData {
     _started_at: NaiveDateTime,
 }
 
-pub fn run(twitch_client_id: String, mut event_rx: BusReader<Event>) {
+pub fn run(twitch_client_id: String, event_rx: Receiver<Event>) {
     let mut notification_channel;
     loop {
         notification_channel = match event_rx.recv() {
             Ok(message) => match message {
-                #[cfg(feature = "discord")]
                 Event::DiscordEvent(event) => match event {
                     DiscordEvent::Ready(ctx, notification_channel_id) => {
                         Some((ctx, notification_channel_id))

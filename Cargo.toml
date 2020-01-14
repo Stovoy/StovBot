@@ -1,6 +1,6 @@
 [package]
 name = "stovbot"
-version = "0.13.0"
+version = "0.14.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
 default-run = "stovbot"
@@ -20,21 +20,17 @@ lto = false
 [features]
 # Include the Iced UI.
 gui = ["iced", "iced_native", "iced_core"]
-discord = ["serenity"]
-twitch = ["twitchchat", "reqwest", "chrono"]
-default = ["discord", "twitch"]
 
 [dependencies]
-twitchchat = { version = "0.7.2", optional = true }
-reqwest = { version = "0.10.1", optional = true, features = ["blocking", "json"] }
-chrono = { version = "0.4.10", optional = true}
-serde = { version = "1.0", features = ["derive"] }
-serenity = {version = "0.8.0", optional = true }
+twitchchat = "0.7.2"
+reqwest = { version = "0.10.1", features = ["blocking", "json"] }
+chrono = { version = "0.4.10"}
+serde = { version = "1.0", features = ["derive", "rc"] }
+serenity = {version = "0.8.0" }
 rhai = { git = "https://github.com/stovoy/rhai", branch = "master" }
 logos = "0.9.7"
 rand = "0.7.3"
 rusqlite = "0.21.0"
-bus = "2.2.2"
 time = "0.1.0"
 toml = "0.5.5"
 iced = { git = "https://github.com/hecrj/iced", branch = "master", optional = true}
@@ -45,3 +41,4 @@ serde_json = "1.0.44"
 futures = "0.3.1"
 async-std = "1.4.0"
 env_logger = "0.7.1"
+rocket = { version = "0.4.2", default-features = false }

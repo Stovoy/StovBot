@@ -1,4 +1,4 @@
-use crate::{Event, EventSender};
+use crate::{Event, EventBusSender};
 use serenity::model::id::ChannelId;
 use serenity::{
     model::{channel::Message, gateway::Ready},
@@ -13,7 +13,7 @@ pub enum DiscordEvent {
 }
 
 struct Handler {
-    sender: EventSender,
+    sender: EventBusSender,
 }
 
 impl EventHandler for Handler {
@@ -46,6 +46,6 @@ impl EventHandler for Handler {
     }
 }
 
-pub fn connect(token: String, sender: EventSender) -> Client {
+pub fn connect(token: String, sender: EventBusSender) -> Client {
     Client::new(&token, Handler { sender }).expect("Err creating client")
 }

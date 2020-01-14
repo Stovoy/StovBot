@@ -2,18 +2,16 @@ use crate::admin::AdminEvent;
 use crate::command::CommandExt;
 use crate::command::Commands;
 use crate::database::Database;
-#[cfg(feature = "discord")]
 use crate::discord::DiscordEvent;
 use crate::models::{Action, ActionError, Command, Message, Source, User, Variable};
-#[cfg(feature = "twitch")]
 use crate::twitch::TwitchEvent;
-use crate::{special_command, Event, EventSender};
-use bus::BusReader;
+use crate::{special_command, Event, EventBusSender};
+use crossbeam::channel::Receiver;
 use rusqlite::Error;
-#[cfg(feature = "discord")]
+use serde::{Deserialize, Serialize};
 use serenity::utils::MessageBuilder as DiscordMessageBuilder;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BotEvent {
     // On initial load from the database.
     LoadCommand(Command),
@@ -34,14 +32,14 @@ pub struct Bot {
     pub username: String,
     pub commands: Commands,
 
-    pub sender: EventSender,
-    pub event_rx: BusReader<Event>,
+    pub sender: EventBusSender,
+    pub event_rx: Receiver<Event>,
 
     pub database: Database,
 }
 
 impl Bot {
-    pub fn new(sender: EventSender, event_rx: BusReader<Event>) -> Result<Bot, Error> {
+    pub fn new(sender: EventBusSender, event_rx: Receiver<Event>) -> Result<Bot, Error> {
         let database = Database::new()?;
         let mut commands = special_command::commands();
         commands.append(database.get_commands()?.as_mut());
@@ -75,7 +73,6 @@ impl Bot {
             let message = match self.event_rx.recv() {
                 Ok(event) => match event {
                     Event::BotEvent(_) => None,
-                    #[cfg(feature = "twitch")]
                     Event::TwitchEvent(event) => match event {
                         TwitchEvent::Ready(writer) => {
                             writer.join("stovoy").unwrap();
@@ -89,7 +86,6 @@ impl Bot {
                             source: Source::Twitch(writer, "stovoy".to_string()),
                         }),
                     },
-                    #[cfg(feature = "discord")]
                     Event::DiscordEvent(event) => match event {
                         DiscordEvent::Ready(_, _) => None,
                         DiscordEvent::Message(ctx, msg) => Some(Message {
@@ -267,11 +263,9 @@ impl Bot {
             #[cfg(test)]
             Source::None => {}
             Source::Admin => println!("{}", text),
-            #[cfg(feature = "twitch")]
             Source::Twitch(writer, channel) => {
                 writer.send(channel, text).unwrap();
             }
-            #[cfg(feature = "discord")]
             Source::Discord(ctx, msg) => {
                 let response = DiscordMessageBuilder::new().push(text).build();
                 if let Err(why) = msg.channel_id.say(&ctx.lock().unwrap().http, &response) {
