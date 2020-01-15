@@ -1,6 +1,6 @@
 [package]
 name = "stovbot"
-version = "0.14.0"
+version = "0.15.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
 default-run = "stovbot"
@@ -16,10 +16,7 @@ path = "src/script_engine.rs"
 [profile.dev]
 opt-level = 0
 lto = false
-
-[features]
-# Include the Iced UI.
-gui = ["iced", "iced_native", "iced_core"]
+codegen-units = 8
 
 [dependencies]
 twitchchat = "0.7.2"
@@ -33,12 +30,13 @@ rand = "0.7.3"
 rusqlite = "0.21.0"
 time = "0.1.0"
 toml = "0.5.5"
-iced = { git = "https://github.com/hecrj/iced", branch = "master", optional = true}
-iced_native = { git = "https://github.com/hecrj/iced", branch = "master", optional = true }
-iced_core = { git = "https://github.com/hecrj/iced", branch = "master", optional = true }
+iced = { git = "https://github.com/hecrj/iced", branch = "master" }
+iced_native = { git = "https://github.com/hecrj/iced", branch = "master" }
+iced_core = { git = "https://github.com/hecrj/iced", branch = "master" }
 crossbeam = "0.7.3"
 serde_json = "1.0.44"
 futures = "0.3.1"
 async-std = "1.4.0"
 env_logger = "0.7.1"
 rocket = { version = "0.4.2", default-features = false }
+clap = "2.33.0"

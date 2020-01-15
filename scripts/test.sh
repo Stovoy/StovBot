@@ -3,8 +3,6 @@
 
 set -o pipefail
 
-cargo check
-cargo check --all-features
-cargo build --bin script_engine --all-features
-cargo test --all-features
+cargo build --bin script_engine
+cargo test
 cargo clippy

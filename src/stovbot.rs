@@ -2,10 +2,16 @@
 #[macro_use]
 extern crate rocket;
 
+#[macro_use]
+extern crate clap;
+
 use admin::AdminEvent;
 use bot::{Bot, BotEvent};
+use clap::{App, Arg, ArgMatches};
 use crossbeam::channel::{bounded, Receiver, Sender};
 use discord::DiscordEvent;
+use futures::executor::block_on;
+use futures::stream::{BoxStream, StreamExt};
 use futures::task::{Context, Poll, Waker};
 use futures::Stream;
 use serde::export::fmt::Error;
@@ -23,19 +29,12 @@ mod bot;
 mod command;
 pub mod database;
 mod discord;
+mod gui;
 pub mod models;
 mod script_runner;
 mod server;
 mod special_command;
 mod twitch;
-
-#[cfg(feature = "gui")]
-mod gui;
-
-#[cfg(not(feature = "gui"))]
-use futures::executor::block_on;
-#[cfg(not(feature = "gui"))]
-use futures::stream::{BoxStream, StreamExt};
 
 #[derive(Deserialize, Debug, Clone)]
 struct Secrets {
@@ -44,19 +43,64 @@ struct Secrets {
     discord_token: String,
 }
 
+fn parse_args<'a>() -> ArgMatches<'a> {
+    App::new("StovBot")
+        .version(&crate_version!()[..])
+        .author("Steve Mostovoy <stevemostovoysm@gmail.com>")
+        .about("Does awesome things")
+        .arg(
+            Arg::with_name("gui")
+                .long("gui")
+                .help("Runs the gui")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("server")
+                .long("server")
+                .help("Runs the server")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("cli")
+                .long("cli")
+                .help("Runs the cli")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("client")
+                .long("client")
+                .help("Runs the client which will talk to a server")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("twitch")
+                .long("twitch")
+                .help("Connects to twitch")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("discord")
+                .long("discord")
+                .help("Connects to discord")
+                .takes_value(false),
+        )
+        .get_matches()
+}
+
 fn main() -> Result<(), ConnectError> {
-    #[cfg(feature = "gui")]
-    gui::run();
-    #[cfg(not(feature = "gui"))]
-    block_on(run())?;
+    let args = parse_args();
+
+    if args.is_present("gui") {
+        gui::run();
+    } else {
+        block_on(run())?;
+    }
+
     Ok(())
 }
 
-#[cfg(not(feature = "gui"))]
 async fn run() -> Result<(), ConnectError> {
-    println!("Connecting...");
     let connected_state = connect().await?;
-    println!("Connected");
     let stream: BoxStream<'static, Event> = Pin::from(Box::from(connected_state.boxed()));
     stream
         .for_each(|event| {
@@ -149,29 +193,34 @@ impl EventBusSender {
 }
 
 async fn connect() -> Result<ConnectedState, ConnectError> {
-    let (event_bus, event_sender) = EventBus::new();
-    let bot_rx = event_bus.add_rx();
-    let state_rx = event_bus.add_rx();
-    let server_rx = event_bus.add_rx();
+    let args = parse_args();
 
-    let background_rx = event_bus.add_rx();
+    let (event_bus, event_sender) = EventBus::new();
 
     let secrets = load_secrets().await?;
 
-    connect_twitch_thread(secrets.clone(), event_sender.clone());
+    if args.is_present("twitch") {
+        connect_twitch_thread(secrets.clone(), event_sender.clone());
+    }
 
-    connect_discord_thread(secrets.clone(), event_sender.clone());
+    if args.is_present("discord") {
+        connect_discord_thread(secrets.clone(), event_sender.clone());
+    }
 
-    connect_admin_cli_thread(event_sender.clone());
+    if args.is_present("cli") {
+        connect_admin_cli_thread(event_sender.clone());
+    }
 
-    connect_background_thread(secrets, background_rx);
+    if args.is_present("server") {
+        connect_server_thread(event_sender.clone(), event_bus.add_rx());
+    }
 
-    connect_bot_thread(event_sender.clone(), bot_rx);
+    connect_background_thread(secrets, event_bus.add_rx());
 
-    connect_server_thread(event_sender.clone(), server_rx);
+    connect_bot_thread(event_sender.clone(), event_bus.add_rx());
 
     Ok(ConnectedState {
-        event_rx: Arc::new(Mutex::new(state_rx)),
+        event_rx: Arc::new(Mutex::new(event_bus.add_rx())),
         waker: event_sender.waker.clone(),
     })
 }

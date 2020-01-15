@@ -1,11 +1,8 @@
 use crate::{Event, EventBusSender};
-use env_logger;
 use std::net::TcpStream;
 use twitchchat::{commands, Client, Message, UserConfig, Writer};
 
 pub fn connect(token: String) -> Client<TcpStream> {
-    env_logger::init();
-
     twitchchat::connect(
         UserConfig::builder()
             .membership()
@@ -47,7 +44,7 @@ impl Handler {
                 }
                 twitchchat::Event::Message(Message::Irc(_)) => {}
                 twitchchat::Event::Error(err) => {
-                    eprintln!("error: {}", err);
+                    eprintln!("Twitch error: {}", err);
                     break;
                 }
                 _ => unreachable!(),
