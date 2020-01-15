@@ -26,6 +26,7 @@ use twitch::TwitchEvent;
 mod admin;
 mod background;
 mod bot;
+mod client;
 mod command;
 pub mod database;
 mod discord;
@@ -199,25 +200,29 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
 
     let secrets = load_secrets().await?;
 
-    if args.is_present("twitch") {
-        connect_twitch_thread(secrets.clone(), event_sender.clone());
-    }
-
-    if args.is_present("discord") {
-        connect_discord_thread(secrets.clone(), event_sender.clone());
-    }
-
     if args.is_present("cli") {
         connect_admin_cli_thread(event_sender.clone());
     }
 
-    if args.is_present("server") {
-        connect_server_thread(event_sender.clone(), event_bus.add_rx());
+    if args.is_present("client") {
+        connect_client_thread(secrets.clone(), event_sender.clone(), event_bus.add_rx());
+    } else {
+        if args.is_present("twitch") {
+            connect_twitch_thread(secrets.clone(), event_sender.clone());
+        }
+
+        if args.is_present("discord") {
+            connect_discord_thread(secrets.clone(), event_sender.clone());
+        }
+
+        if args.is_present("server") {
+            connect_server_thread(event_sender.clone(), event_bus.add_rx());
+        }
+
+        connect_background_thread(secrets, event_bus.add_rx());
+
+        connect_bot_thread(event_sender.clone(), event_bus.add_rx());
     }
-
-    connect_background_thread(secrets, event_bus.add_rx());
-
-    connect_bot_thread(event_sender.clone(), event_bus.add_rx());
 
     Ok(ConnectedState {
         event_rx: Arc::new(Mutex::new(event_bus.add_rx())),
@@ -270,6 +275,10 @@ fn connect_bot_thread(sender: EventBusSender, event_rx: Receiver<Event>) {
 
 fn connect_server_thread(sender: EventBusSender, event_rx: Receiver<Event>) {
     thread::spawn(|| server::run(sender, event_rx));
+}
+
+fn connect_client_thread(secrets: Secrets, sender: EventBusSender, event_rx: Receiver<Event>) {
+    thread::spawn(|| client::run(secrets.twitch_token, sender, event_rx));
 }
 
 impl Stream for ConnectedState {
