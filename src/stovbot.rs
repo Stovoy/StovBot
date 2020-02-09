@@ -162,7 +162,11 @@ impl EventBus {
         thread::spawn(move || {
             for event in rx_bus.iter() {
                 for tx in txs_clone.lock().unwrap().iter() {
-                    tx.send(event.clone()).unwrap();
+                    match tx.send(event.clone()) {
+                        Ok(_) => {}
+                        // Don't crash if the rx failed.
+                        Err(_) => {}
+                    }
                 }
             }
         });
