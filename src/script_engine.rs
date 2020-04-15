@@ -17,6 +17,7 @@ use std::{env, panic};
 
 mod database;
 mod models;
+mod waifu;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -103,6 +104,8 @@ impl ScriptEngine {
         engine.register_fn("set", ScriptFunction::set as fn(x: String, y: f64));
         engine.register_fn("set", ScriptFunction::set as fn(x: String, y: bool));
         engine.register_fn("get_list", ScriptFunction::get_list);
+        engine.register_fn("waifu", ScriptFunction::waifu);
+        engine.register_fn("upload_image", ScriptFunction::upload_image);
         ScriptEngine(engine)
     }
 }
@@ -203,6 +206,14 @@ impl ScriptFunction {
                 _ => panic!(e),
             },
         }
+    }
+
+    fn waifu() -> String {
+        waifu::generate_waifu_image()
+    }
+
+    fn upload_image(png_base64: String) -> String {
+        format!("{{{{IMAGE|{}}}}}", png_base64)
     }
 }
 

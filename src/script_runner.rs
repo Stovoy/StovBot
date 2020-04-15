@@ -16,10 +16,7 @@ impl From<Error> for ScriptRunnerError {
 
 pub fn run(script: &str, database_path: &str) -> String {
     match eval(script, database_path) {
-        Ok(result) => {
-            println!("{}", result);
-            result
-        }
+        Ok(result) => result,
         Err(e) => match e {
             ScriptRunnerError::Timeout => "Script Error: Timeout".to_string(),
             ScriptRunnerError::Crash => "Script Error: Crash".to_string(),

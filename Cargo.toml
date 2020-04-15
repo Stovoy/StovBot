@@ -1,6 +1,6 @@
 [package]
 name = "stovbot"
-version = "0.16.0"
+version = "0.17.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
 default-run = "stovbot"
@@ -40,3 +40,5 @@ async-std = "1.4.0"
 env_logger = "0.7.1"
 rocket = { version = "0.4.2", default-features = false }
 clap = "2.33.0"
+regex = "1"
+base64 = "0.12"

@@ -125,6 +125,10 @@ impl Command {
                 \"#\" + string(i + 1) + \": \" + quotes[i]\
                 }}".to_string(),
             ),
+            Command::new(
+                "!waifu".to_string(),
+                "{{\"@$user \" + upload_image(waifu())}}".to_string(),
+            ),
         ]
     }
 }

@@ -36,6 +36,7 @@ mod script_runner;
 mod server;
 mod special_command;
 mod twitch;
+pub mod waifu;
 
 #[derive(Deserialize, Debug, Clone)]
 struct Secrets {
@@ -71,6 +72,12 @@ fn parse_args<'a>() -> ArgMatches<'a> {
             Arg::with_name("client")
                 .long("client")
                 .help("Runs the client which will talk to a server")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("background")
+                .long("background")
+                .help("Runs background thread that watches for stream going live")
                 .takes_value(false),
         )
         .arg(
@@ -223,7 +230,9 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
             connect_server_thread(event_sender.clone(), event_bus.add_rx());
         }
 
-        connect_background_thread(secrets, event_bus.add_rx());
+        if args.is_present("background") {
+            connect_background_thread(secrets, event_bus.add_rx());
+        }
 
         connect_bot_thread(event_sender.clone(), event_bus.add_rx());
     }

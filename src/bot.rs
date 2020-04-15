@@ -7,9 +7,10 @@ use crate::models::{Action, ActionError, Command, Message, Source, User, Variabl
 use crate::twitch::TwitchEvent;
 use crate::{special_command, Event, EventBusSender};
 use crossbeam::channel::Receiver;
+use regex::Regex;
 use rusqlite::Error;
 use serde::{Deserialize, Serialize};
-use serenity::utils::MessageBuilder as DiscordMessageBuilder;
+use serenity::http::AttachmentType as DiscordAttachmentType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BotEvent {
@@ -259,17 +260,55 @@ impl Bot {
     }
 
     fn send_message(&self, source: &Source, text: &str) {
+        let image_regex = Regex::new(r"\{\{IMAGE\|(.*?)}}").unwrap();
+
+        let mut png: Option<Vec<u8>> = None;
+        // TODO: How to do this with less string craziness?
+        let text = &match image_regex.captures(text) {
+            None => text.to_string(),
+            Some(matches) => {
+                let png_base64 = matches.get(1).unwrap().as_str();
+                png = match base64::decode(png_base64) {
+                    Ok(png) => Some(png),
+                    Err(e) => {
+                        println!("Error decoded image base64: {}", e);
+                        None
+                    }
+                };
+                text.replace(matches.get(0).unwrap().as_str(), "")
+                    .to_string()
+            }
+        };
+
         match source {
             #[cfg(test)]
             Source::None => {}
             Source::Admin => println!("{}", text),
-            Source::Twitch(writer, channel) => {
-                writer.send(channel, text).unwrap();
-            }
+            Source::Twitch(writer, channel) => match png {
+                Some(_) => {
+                    let text = format!("{} (only works in discord)", text).to_string();
+                    writer.send(channel, text).unwrap();
+                }
+                None => {
+                    writer.send(channel, text).unwrap();
+                }
+            },
             Source::Discord(ctx, msg) => {
-                let response = DiscordMessageBuilder::new().push(text).build();
-                if let Err(why) = msg.channel_id.say(&ctx.lock().unwrap().http, &response) {
-                    println!("Error sending message: {:?}", why);
+                if let Err(e) = msg.channel_id.send_message(&ctx.lock().unwrap().http, |m| {
+                    m.content(text);
+                    if let Some(ref png) = png {
+                        m.embed(|e| {
+                            e.image("attachment://waifu.png");
+                            e
+                        });
+                        m.add_file(DiscordAttachmentType::Bytes {
+                            data: std::borrow::Cow::Borrowed(png.as_slice()),
+                            filename: "waifu.png".to_string(),
+                        });
+                    }
+                    m
+                }) {
+                    println!("Error sending message: {:?}", e);
                 }
             }
         }
