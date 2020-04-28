@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:experimental
-FROM rust:1.40-buster@sha256:b9206ab8057d1e851e6286802eebeca5dadc78c73788cf25c5da4be7ac8363fa as build
+FROM rust:1.43-buster@sha256:afeb25419be9f7b69481bd5ad37f107a87fca1bb205a5b694a9f0c9136b5788f as build
 VOLUME ["/usr/local/cargo", "/stovbot/target"]
 WORKDIR /app
 RUN USER=root cargo init
