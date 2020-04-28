@@ -26,8 +26,17 @@ pub enum Action {
     EditCommand(Command),
     DeleteCommand(Command),
     AddVariable(Variable),
-    EditVariable(Variable),
+    EditVariable(Variable, EditType),
     DeleteVariable(Variable),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EditType {
+    Overwrite(),
+    Append(),
+    Remove(),
+    InsertAt(usize),
+    RemoveAt(usize),
 }
 
 #[derive(Debug)]
@@ -39,8 +48,13 @@ pub enum ActionError {
     BadCommand(String),
     BadCommandTriggerPrefix,
     BadVariable(String),
+    BadCommandAlias,
     VariableAlreadyExists,
     VariableDoesNotExist,
+    VariableEditTypeNotSupported,
+    VariableWrongType,
+    VariableBadEditIndex,
+    VariableBadEditIndexValue,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +68,7 @@ pub struct Command {
     pub actor: Option<Actor>,
     #[serde(skip)]
     pub database_path: String,
+    pub is_alias: bool,
 }
 
 pub struct Message {
@@ -84,6 +99,19 @@ impl Command {
             response,
             actor: None,
             database_path: Database::default_path(),
+            is_alias: false,
+        }
+    }
+
+    pub fn new_alias(trigger: String, alias: String) -> Command {
+        Command {
+            id: 0,
+            time_created: time::empty_tm().to_timespec(),
+            trigger,
+            response: alias,
+            actor: None,
+            database_path: Database::default_path(),
+            is_alias: true,
         }
     }
 
@@ -124,6 +152,14 @@ impl Command {
                 let i = int(\"$1\"); if i == 0 { i = random_index(quotes) } else { i -= 1 } \
                 \"#\" + string(i + 1) + \": \" + quotes[i]\
                 }}".to_string(),
+            ),
+            Command::new_alias(
+                "!quote add".to_string(),
+                "!variable edit quotes+ [$text]".to_string(),
+            ),
+            Command::new_alias(
+                "!quote remove".to_string(),
+                "!variable edit quotes-# {{int(\"$text\") - 1}}".to_string(),
             ),
             Command::new(
                 "!waifu".to_string(),

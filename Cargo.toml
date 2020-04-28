@@ -1,6 +1,6 @@
 [package]
 name = "stovbot"
-version = "0.17.0"
+version = "0.18.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
 edition = "2018"
 default-run = "stovbot"

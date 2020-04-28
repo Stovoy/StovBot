@@ -30,6 +30,9 @@ enum Token {
     #[token = "$year"]
     Year,
 
+    #[token = "$text"]
+    Text,
+
     #[token = "{{"]
     ScriptStart,
 
@@ -44,7 +47,7 @@ enum Token {
 }
 
 pub trait CommandExt {
-    fn matches_trigger(&self, message: &Message) -> bool;
+    fn matches_trigger(&self, text: &String) -> bool;
     #[cfg(test)]
     fn respond(&self, message: &Message) -> Option<BotMessage>;
     fn respond_no_check(&self, message: &Message) -> BotMessage;
@@ -52,13 +55,13 @@ pub trait CommandExt {
 }
 
 impl CommandExt for Command {
-    fn matches_trigger(&self, message: &Message) -> bool {
-        message.text == self.trigger || message.text.starts_with(&format!("{} ", self.trigger))
+    fn matches_trigger(&self, text: &String) -> bool {
+        *text == self.trigger || text.starts_with(&format!("{} ", self.trigger))
     }
 
     #[cfg(test)]
     fn respond(&self, message: &Message) -> Option<BotMessage> {
-        match self.matches_trigger(message) {
+        match self.matches_trigger(&message.text) {
             true => Some(self.respond_no_check(message)),
             false => None,
         }
@@ -96,6 +99,9 @@ impl CommandExt for Command {
                 }
                 Token::Year => {
                     *accumulator += "YEAR";
+                }
+                Token::Text => {
+                    *accumulator += text;
                 }
                 Token::ScriptStart => {
                     if in_script {

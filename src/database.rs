@@ -63,7 +63,8 @@ impl Database {
               id            INTEGER PRIMARY KEY AUTOINCREMENT,
               time_created  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
               trigger       TEXT NOT NULL UNIQUE,
-              response      TEXT NOT NULL
+              response      TEXT NOT NULL,
+              is_alias      BOOL NOT NULL
             )",
             "CREATE TABLE IF NOT EXISTS variable (
               id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,23 +87,23 @@ impl Database {
 
     pub fn add_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
-            "INSERT INTO command (trigger, response) VALUES (?1, ?2)",
-            params![command.trigger, command.response],
+            "INSERT INTO command (trigger, response, is_alias) VALUES (?1, ?2, ?3)",
+            params![command.trigger, command.response, command.is_alias],
         )
     }
 
     pub fn update_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
-            "UPDATE command SET response = ?2 WHERE trigger = ?1",
-            params![command.trigger, command.response],
+            "UPDATE command SET response = ?2, is_alias = ?3 WHERE trigger = ?1",
+            params![command.trigger, command.response, command.is_alias],
         )
     }
 
     pub fn upsert_command(&self, command: &Command) -> Result<usize, Error> {
         self.connection.execute(
-            "INSERT INTO command (trigger, response) VALUES(?1, ?2)
-             ON CONFLICT(trigger) DO UPDATE SET response = ?2",
-            params![command.trigger, command.response],
+            "INSERT INTO command (trigger, response, is_alias) VALUES(?1, ?2, ?3)
+             ON CONFLICT(trigger) DO UPDATE SET response = ?2, is_alias = ?3",
+            params![command.trigger, command.response, command.is_alias],
         )
     }
 
@@ -116,7 +117,7 @@ impl Database {
     pub fn get_commands(&self) -> Result<Vec<Command>, Error> {
         let mut statement = self
             .connection
-            .prepare("SELECT id, time_created, trigger, response FROM command")?;
+            .prepare("SELECT id, time_created, trigger, response, is_alias FROM command")?;
         let commands_iter = statement.query_map(params![], |row: &Row| self.map_command(row))?;
 
         let mut commands = Vec::new();
@@ -170,6 +171,7 @@ impl Database {
             response: row.get(3)?,
             actor: None,
             database_path: self.path.clone(),
+            is_alias: row.get(4)?,
         })
     }
 

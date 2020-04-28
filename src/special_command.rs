@@ -1,5 +1,22 @@
-use crate::models::{Action, ActionError, Actor, Command, Message, Variable, VariableValue};
+use crate::models::{
+    Action, ActionError, Actor, Command, EditType, Message, StringItem, Variable, VariableValue,
+};
 
+/*
+Variables
+    Text
+    StringList
+
+Commands
+    done !variable add <var name> <value>
+    done !variable add <var name> [<value?>] (array)
+    done !variable edit <var name> <new value> (should never change form from text -> stringlist or vice versa)
+    !variable edit <var name>+ <value to append> (append to array or string)
+    !variable edit <var name>- <value to remove> (remove from array or string)
+    !variable edit <var name>-# <index to remove> (remove from array or string)
+    !variable edit <var name>+# <index to insert at> (insert into array or string)
+    !variable delete <var name>
+*/
 pub fn commands() -> Vec<Command> {
     vec![
         Command::new(
@@ -84,34 +101,100 @@ fn parse_command_message(
 }
 
 fn add_variable(command: &Command, message: &Message) -> Result<Action, ActionError> {
-    let (name, value) = parse_variable_message(command, message)?;
-    Ok(Action::AddVariable(Variable::new(name, value)))
+    let (name, value, edit_type) = parse_variable_message(command, message)?;
+    if edit_type != EditType::Overwrite() {
+        Err(ActionError::VariableEditTypeNotSupported)
+    } else {
+        Ok(Action::AddVariable(Variable::new(name, value)))
+    }
 }
 
 fn edit_variable(command: &Command, message: &Message) -> Result<Action, ActionError> {
-    let (name, value) = parse_variable_message(command, message)?;
-    Ok(Action::EditVariable(Variable::new(name, value)))
+    let (name, value, edit_type) = parse_variable_message(command, message)?;
+    Ok(Action::EditVariable(Variable::new(name, value), edit_type))
 }
 
 fn delete_variable(command: &Command, message: &Message) -> Result<Action, ActionError> {
-    let (name, value) = parse_variable_message(command, message)?;
-    Ok(Action::DeleteVariable(Variable::new(name, value)))
+    let (name, value, edit_type) = parse_variable_message(command, message)?;
+    if edit_type != EditType::Overwrite() {
+        Err(ActionError::VariableEditTypeNotSupported)
+    } else {
+        Ok(Action::DeleteVariable(Variable::new(name, value)))
+    }
 }
 
 fn parse_variable_message(
     command: &Command,
     message: &Message,
-) -> Result<(String, VariableValue), ActionError> {
+) -> Result<(String, VariableValue, EditType), ActionError> {
     let variable = message.after_trigger(&command.trigger);
     let parts: Vec<&str> = variable.split(' ').collect();
     if parts.is_empty() {
         Err(ActionError::BadVariable(variable.to_string()))
     } else if parts.len() == 1 {
         let name = parts[0];
-        Ok((name.to_string(), VariableValue::Text("".to_string())))
+        Ok((
+            name.to_string(),
+            VariableValue::Text("".to_string()),
+            EditType::Overwrite(),
+        ))
     } else {
-        let name = parts[0];
-        let value = parts[1..].join(" ");
-        Ok((name.to_string(), VariableValue::Text(value)))
+        let mut name = parts[0];
+        let mut edit_type = EditType::Overwrite();
+        let mut value = parts[1..].join(" ");
+
+        if name.ends_with("+") {
+            edit_type = EditType::Append();
+            name = &name[0..name.len() - 1];
+        } else if name.ends_with("-") {
+            edit_type = EditType::Remove();
+            name = &name[0..name.len() - 1];
+        } else if name.ends_with("+#") {
+            match parse_variable_index(parts) {
+                Ok((index, v)) => {
+                    edit_type = EditType::InsertAt(index);
+                    match v {
+                        Some(v) => value = v,
+                        None => return Err(ActionError::VariableBadEditIndexValue),
+                    }
+                }
+                Err(err) => return Err(err),
+            }
+            name = &name[0..name.len() - 2];
+        } else if name.ends_with("-#") {
+            match parse_variable_index(parts) {
+                Ok((index, _)) => {
+                    edit_type = EditType::RemoveAt(index);
+                    value = "".to_string();
+                }
+                Err(err) => return Err(err),
+            }
+            name = &name[0..name.len() - 2];
+        }
+
+        if value.starts_with("[") && value.ends_with("]") {
+            let vec = if value == "[]" {
+                Vec::new()
+            } else {
+                vec![StringItem::new(&value[1..value.len() - 1])]
+            };
+
+            Ok((name.to_string(), VariableValue::StringList(vec), edit_type))
+        } else {
+            Ok((name.to_string(), VariableValue::Text(value), edit_type))
+        }
+    }
+}
+
+fn parse_variable_index(parts: Vec<&str>) -> Result<(usize, Option<String>), ActionError> {
+    match parts[1].parse::<usize>() {
+        Ok(index) => {
+            if parts.len() == 2 {
+                Ok((index, None))
+            } else {
+                Ok((index, Some(parts[2..].join(" "))))
+            }
+        }
+        Err(_) => Err(ActionError::VariableBadEditIndex),
     }
 }

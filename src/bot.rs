@@ -3,7 +3,9 @@ use crate::command::CommandExt;
 use crate::command::Commands;
 use crate::database::Database;
 use crate::discord::DiscordEvent;
-use crate::models::{Action, ActionError, Command, Message, Source, User, Variable};
+use crate::models::{
+    Action, ActionError, Command, EditType, Message, Source, User, Variable, VariableValue,
+};
 use crate::twitch::TwitchEvent;
 use crate::{special_command, Event, EventBusSender};
 use crossbeam::channel::Receiver;
@@ -11,6 +13,7 @@ use regex::Regex;
 use rusqlite::Error;
 use serde::{Deserialize, Serialize};
 use serenity::http::AttachmentType as DiscordAttachmentType;
+use std::cmp::min;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BotEvent {
@@ -119,96 +122,146 @@ impl Bot {
         }
     }
 
+    fn process_command(
+        &self,
+        command: &Command,
+        message: &Message,
+    ) -> Result<(BotMessage, Option<Action>), ActionError> {
+        let mut deferred_action = None;
+        let action_error = match &command.actor {
+            None => None,
+            Some(actor) => match actor.0(&command, message) {
+                // TODO: Add GetCommand and GetVariable which respond with the raw data.
+                Ok(action) => {
+                    let action_error = match &action {
+                        Action::AddCommand(command) => {
+                            if self.commands.contains(command) {
+                                Some(ActionError::CommandAlreadyExists)
+                            } else {
+                                None
+                            }
+                        }
+                        Action::EditCommand(command) => {
+                            if !self.commands.contains(command) {
+                                Some(ActionError::CommandDoesNotExist)
+                            } else if self.is_builtin_command(command) {
+                                Some(ActionError::CannotModifyBuiltInCommand)
+                            } else {
+                                None
+                            }
+                        }
+                        Action::DeleteCommand(command) => {
+                            if !self.commands.contains(command) {
+                                Some(ActionError::CommandDoesNotExist)
+                            } else if self.is_builtin_command(command) {
+                                Some(ActionError::CannotDeleteBuiltInCommand)
+                            } else {
+                                None
+                            }
+                        }
+                        Action::AddVariable(variable) => {
+                            match self.database.get_variable(&variable.name) {
+                                Ok(_) => Some(ActionError::VariableAlreadyExists),
+                                Err(_) => None,
+                            }
+                        }
+                        Action::EditVariable(variable, edit_type) => {
+                            // TODO: Catch other DB connection errors.
+                            match self.database.get_variable(&variable.name) {
+                                Ok(old_variable) => match edit_type {
+                                    EditType::RemoveAt(_) => None,
+                                    _ => match (&variable.value, old_variable.value) {
+                                        (VariableValue::Text(_), VariableValue::Text(_)) => None,
+                                        (
+                                            VariableValue::StringList(_),
+                                            VariableValue::StringList(_),
+                                        ) => None,
+                                        _ => Some(ActionError::VariableWrongType),
+                                    },
+                                },
+                                Err(_) => Some(ActionError::VariableDoesNotExist),
+                            }
+                        }
+                        Action::DeleteVariable(variable) => {
+                            // TODO: Catch other DB connection errors.
+                            match self.database.get_variable(&variable.name) {
+                                Ok(_) => None,
+                                Err(_) => Some(ActionError::VariableDoesNotExist),
+                            }
+                        }
+                    };
+                    match action_error {
+                        None => deferred_action = Some(action),
+                        Some(_) => {}
+                    };
+                    action_error
+                }
+                Err(e) => Some(e),
+            },
+        };
+        match action_error {
+            None => {
+                let response = command.respond_no_check(message);
+                if command.is_alias {
+                    match self.get_triggered_command(&response.text) {
+                        None => Err(ActionError::BadCommandAlias),
+                        Some(command) => {
+                            self.process_command(
+                                command,
+                                &Message {
+                                    sender: message.sender.clone(),
+                                    text: response.text,
+                                    // TODO: Way to move or clone the source?
+                                    source: Source::Admin,
+                                },
+                            )
+                        }
+                    }
+                } else {
+                    Ok((response, deferred_action))
+                }
+            }
+            Some(e) => Ok((
+                BotMessage {
+                    text: format!("{:?}", e),
+                },
+                None,
+            )),
+        }
+    }
+
+    fn get_triggered_command(&self, text: &String) -> Option<&Command> {
+        self.commands
+            .iter()
+            .filter(|command| command.matches_trigger(text))
+            .max_by_key(|command| command.trigger.len())
+    }
+
     fn respond(&mut self, message: &Message) -> Option<BotMessage> {
         if message.sender.username == self.username {
             return None;
         }
 
-        let mut deferred_action = None;
-
-        let triggered_command = self
-            .commands
-            .iter()
-            .find(|command| command.matches_trigger(message));
-        let response = match triggered_command {
-            None => None,
-            Some(command) => {
-                let action_error = match &command.actor {
-                    None => None,
-                    Some(actor) => match actor.0(&command, message) {
-                        // TODO: Add GetCommand and GetVariable which respond with the raw data.
-                        Ok(action) => {
-                            let action_error = match &action {
-                                Action::AddCommand(command) => {
-                                    if self.commands.contains(command) {
-                                        Some(ActionError::CommandAlreadyExists)
-                                    } else {
-                                        None
-                                    }
-                                }
-                                Action::EditCommand(command) => {
-                                    if !self.commands.contains(command) {
-                                        Some(ActionError::CommandDoesNotExist)
-                                    } else if self.is_builtin_command(command) {
-                                        Some(ActionError::CannotModifyBuiltInCommand)
-                                    } else {
-                                        None
-                                    }
-                                }
-                                Action::DeleteCommand(command) => {
-                                    if !self.commands.contains(command) {
-                                        Some(ActionError::CommandDoesNotExist)
-                                    } else if self.is_builtin_command(command) {
-                                        Some(ActionError::CannotDeleteBuiltInCommand)
-                                    } else {
-                                        None
-                                    }
-                                }
-                                Action::AddVariable(variable) => {
-                                    match self.database.get_variable(&variable.name) {
-                                        Ok(_) => Some(ActionError::VariableAlreadyExists),
-                                        Err(_) => None,
-                                    }
-                                }
-                                Action::EditVariable(variable) => {
-                                    // TODO: Catch other DB connection errors.
-                                    match self.database.get_variable(&variable.name) {
-                                        Ok(_) => None,
-                                        Err(_) => Some(ActionError::VariableDoesNotExist),
-                                    }
-                                }
-                                Action::DeleteVariable(variable) => {
-                                    // TODO: Catch other DB connection errors.
-                                    match self.database.get_variable(&variable.name) {
-                                        Ok(_) => None,
-                                        Err(_) => Some(ActionError::VariableDoesNotExist),
-                                    }
-                                }
-                            };
-                            match action_error {
-                                None => deferred_action = Some(action),
-                                Some(_) => {}
-                            };
-                            action_error
-                        }
-                        Err(e) => Some(e),
-                    },
-                };
-                match action_error {
-                    None => Some(command.respond_no_check(message)),
-                    Some(e) => Some(BotMessage {
+        let triggered_command = self.get_triggered_command(&message.text);
+        let (response, action) = match triggered_command {
+            None => (None, None),
+            Some(command) => match self.process_command(command, message) {
+                Err(e) => (
+                    Some(BotMessage {
                         text: format!("{:?}", e),
                     }),
-                }
-            }
+                    None,
+                ),
+                Ok((response, action)) => (Some(response), action),
+            },
         };
 
         // Deferred because it modifies self.commands,
         // but it'd be nice to propagate these error messages properly.
         // TODO: We could do the database bits first, then defer only adding to commands.
-        let event = match deferred_action {
+        let event = match action {
             None => None,
-            Some(deferred_action) => match deferred_action {
+            Some(action) => match action {
                 Action::AddCommand(command) => {
                     if let Err(e) = self.database.add_command(&command) {
                         println!("Error adding command {}: {}", command.trigger, e)
@@ -236,7 +289,95 @@ impl Bot {
                     }
                     Some(BotEvent::AddVariable(variable, message.sender.clone()))
                 }
-                Action::EditVariable(variable) => {
+                Action::EditVariable(mut variable, edit_type) => {
+                    if edit_type != EditType::Overwrite() {
+                        let old_variable = match self.database.get_variable(&variable.name) {
+                            Ok(v) => Some(v),
+                            Err(e) => {
+                                println!("Error editing variable {}: {}", variable.name, e);
+                                None
+                            }
+                        };
+                        if let Some(old_variable) = old_variable {
+                            match edit_type {
+                                EditType::Append() => match (&variable.value, old_variable.value) {
+                                    (
+                                        VariableValue::Text(new_text),
+                                        VariableValue::Text(old_text),
+                                    ) => {
+                                        variable.value = VariableValue::Text(old_text + new_text);
+                                    }
+                                    (
+                                        VariableValue::StringList(new_list),
+                                        VariableValue::StringList(old_list),
+                                    ) => {
+                                        let mut list = old_list.clone();
+                                        list.extend(new_list.clone());
+                                        variable.value = VariableValue::StringList(list);
+                                    }
+                                    _ => {}
+                                },
+                                EditType::Remove() => match (&variable.value, old_variable.value) {
+                                    (
+                                        VariableValue::Text(text_to_remove),
+                                        VariableValue::Text(old_text),
+                                    ) => {
+                                        variable.value = VariableValue::Text(
+                                            old_text.replace(text_to_remove, ""),
+                                        );
+                                    }
+                                    (
+                                        VariableValue::StringList(new_list),
+                                        VariableValue::StringList(mut old_list),
+                                    ) => {
+                                        for item_to_remove in new_list.iter() {
+                                            old_list.retain(|old_item| {
+                                                old_item.value != item_to_remove.value
+                                            });
+                                        }
+                                        variable.value = VariableValue::StringList(old_list);
+                                    }
+                                    _ => {}
+                                },
+                                EditType::InsertAt(index) => {
+                                    match (&variable.value, old_variable.value) {
+                                        (
+                                            VariableValue::Text(text_to_insert),
+                                            VariableValue::Text(mut old_text),
+                                        ) => {
+                                            let index = min(index, old_text.len());
+                                            old_text.insert_str(index, text_to_insert);
+                                            variable.value = VariableValue::Text(old_text);
+                                        }
+                                        (
+                                            VariableValue::StringList(new_list),
+                                            VariableValue::StringList(mut old_list),
+                                        ) => {
+                                            let index = min(index, old_list.len());
+                                            for item_to_insert in new_list.iter().rev() {
+                                                old_list.insert(index, item_to_insert.clone());
+                                            }
+                                            variable.value = VariableValue::StringList(old_list);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                EditType::RemoveAt(index) => match old_variable.value {
+                                    VariableValue::Text(mut old_text) => {
+                                        let index = min(index, old_text.len());
+                                        old_text.remove(index);
+                                        variable.value = VariableValue::Text(old_text);
+                                    }
+                                    VariableValue::StringList(mut old_list) => {
+                                        let index = min(index, old_list.len());
+                                        old_list.remove(index);
+                                        variable.value = VariableValue::StringList(old_list);
+                                    }
+                                },
+                                _ => {}
+                            }
+                        }
+                    };
                     if let Err(e) = self.database.set_variable(&variable) {
                         println!("Error editing variable {}: {}", variable.name, e)
                     }
@@ -263,11 +404,12 @@ impl Bot {
         let image_regex = Regex::new(r"\{\{IMAGE\|(.*?)}}").unwrap();
 
         let mut png: Option<Vec<u8>> = None;
-        // TODO: How to do this with less string craziness?
-        let text = &match image_regex.captures(text) {
-            None => text.to_string(),
+
+        let mut without_image = String::with_capacity(text.len());
+        let text = match image_regex.captures(text) {
+            None => text,
             Some(matches) => {
-                let png_base64 = matches.get(1).unwrap().as_str();
+                let png_base64 = &matches[1];
                 png = match base64::decode(png_base64) {
                     Ok(png) => Some(png),
                     Err(e) => {
@@ -275,8 +417,12 @@ impl Bot {
                         None
                     }
                 };
-                text.replace(matches.get(0).unwrap().as_str(), "")
-                    .to_string()
+                let full_match = matches.get(0).unwrap();
+                let (l, _) = text.split_at(full_match.start());
+                let (_, r) = text.split_at(full_match.end());
+                without_image += l;
+                without_image += r;
+                &without_image
             }
         };
 
