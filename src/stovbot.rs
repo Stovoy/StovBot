@@ -24,7 +24,6 @@ use std::thread;
 use twitch::TwitchEvent;
 
 mod admin;
-mod background;
 mod bot;
 mod client;
 mod command;
@@ -41,7 +40,6 @@ pub mod waifu;
 #[derive(Deserialize, Debug, Clone)]
 struct Secrets {
     twitch_token: String,
-    twitch_client_id: String,
     discord_token: String,
 }
 
@@ -75,12 +73,6 @@ fn parse_args<'a>() -> ArgMatches<'a> {
                 .takes_value(false),
         )
         .arg(
-            Arg::with_name("background")
-                .long("background")
-                .help("Runs background thread that watches for stream going live")
-                .takes_value(false),
-        )
-        .arg(
             Arg::with_name("twitch")
                 .long("twitch")
                 .help("Connects to twitch")
@@ -96,6 +88,8 @@ fn parse_args<'a>() -> ArgMatches<'a> {
 }
 
 fn main() -> Result<(), ConnectError> {
+    env_logger::init();
+
     let args = parse_args();
 
     if args.is_present("gui") {
@@ -230,10 +224,6 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
             connect_server_thread(event_sender.clone(), event_bus.add_rx());
         }
 
-        if args.is_present("background") {
-            connect_background_thread(secrets, event_bus.add_rx());
-        }
-
         connect_bot_thread(event_sender.clone(), event_bus.add_rx());
     }
 
@@ -265,13 +255,6 @@ fn connect_discord_thread(secrets: Secrets, sender: EventBusSender) {
 fn connect_admin_cli_thread(sender: EventBusSender) {
     thread::spawn(|| {
         admin::cli_run(sender);
-    });
-}
-
-fn connect_background_thread(secrets: Secrets, event_rx: Receiver<Event>) {
-    let twitch_client_id = secrets.twitch_client_id;
-    thread::spawn(|| {
-        background::run(twitch_client_id, event_rx);
     });
 }
 

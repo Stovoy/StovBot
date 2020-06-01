@@ -1,5 +1,6 @@
 use crate::models::{
-    Action, ActionError, Actor, Command, EditType, Message, StringItem, Variable, VariableValue,
+    Action, ActionError, Actor, Command, EditType, Message, Source, StringItem, Variable,
+    VariableValue,
 };
 
 /*
@@ -55,6 +56,9 @@ pub fn commands() -> Vec<Command> {
         )
         .with_actor(Actor(delete_variable))
         .build(),
+        Command::new("!notify".to_string(), "Notification sent!".to_string())
+            .with_actor(Actor(send_live_notification))
+            .build(),
     ]
 }
 
@@ -196,5 +200,18 @@ fn parse_variable_index(parts: Vec<&str>) -> Result<(usize, Option<String>), Act
             }
         }
         Err(_) => Err(ActionError::VariableBadEditIndex),
+    }
+}
+
+fn send_live_notification(_: &Command, message: &Message) -> Result<Action, ActionError> {
+    match message.source {
+        Source::Twitch(_, _) => {
+            if message.sender.username == "stovoy" {
+                Ok(Action::SendLiveNotification)
+            } else {
+                Err(ActionError::PermissionDenied)
+            }
+        }
+        _ => Err(ActionError::None),
     }
 }

@@ -13,7 +13,10 @@ use regex::Regex;
 use rusqlite::Error;
 use serde::{Deserialize, Serialize};
 use serenity::http::AttachmentType as DiscordAttachmentType;
+use serenity::model::id::ChannelId;
+use serenity::prelude::Context as DiscordContext;
 use std::cmp::min;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BotEvent {
@@ -40,6 +43,8 @@ pub struct Bot {
     pub event_rx: Receiver<Event>,
 
     pub database: Database,
+
+    notification_channel: Option<(Box<Arc<Mutex<DiscordContext>>>, ChannelId)>,
 }
 
 impl Bot {
@@ -59,6 +64,7 @@ impl Bot {
             sender,
             event_rx,
             database,
+            notification_channel: None,
         };
         Ok(stovbot)
     }
@@ -91,7 +97,10 @@ impl Bot {
                         }),
                     },
                     Event::DiscordEvent(event) => match event {
-                        DiscordEvent::Ready(_, _) => None,
+                        DiscordEvent::Ready(ctx, notification_channel_id) => {
+                            self.notification_channel = Some((ctx, notification_channel_id));
+                            None
+                        }
                         DiscordEvent::Message(ctx, msg) => Some(Message {
                             sender: User {
                                 username: msg.author.name.to_string(),
@@ -189,6 +198,10 @@ impl Bot {
                                 Err(_) => Some(ActionError::VariableDoesNotExist),
                             }
                         }
+                        Action::SendLiveNotification => match &self.notification_channel {
+                            None => Some(ActionError::NotificationChannelNotFound),
+                            _ => None,
+                        },
                     };
                     match action_error {
                         None => deferred_action = Some(action),
@@ -221,12 +234,7 @@ impl Bot {
                     Ok((response, deferred_action))
                 }
             }
-            Some(e) => Ok((
-                BotMessage {
-                    text: format!("{:?}", e),
-                },
-                None,
-            )),
+            Some(e) => Err(e),
         }
     }
 
@@ -246,12 +254,15 @@ impl Bot {
         let (response, action) = match triggered_command {
             None => (None, None),
             Some(command) => match self.process_command(command, message) {
-                Err(e) => (
-                    Some(BotMessage {
-                        text: format!("{:?}", e),
-                    }),
-                    None,
-                ),
+                Err(e) => match e {
+                    ActionError::None => (None, None),
+                    _ => (
+                        Some(BotMessage {
+                            text: format!("{:?}", e),
+                        }),
+                        None,
+                    ),
+                },
                 Ok((response, action)) => (Some(response), action),
             },
         };
@@ -388,6 +399,18 @@ impl Bot {
                         println!("Error deleting variable {}: {}", variable.name, e)
                     }
                     Some(BotEvent::DeleteVariable(variable, message.sender.clone()))
+                }
+                Action::SendLiveNotification => {
+                    let (ctx, channel_id) = self.notification_channel.as_ref().unwrap();
+                    channel_id.send_message(
+                        ctx.lock().unwrap().http.clone(),
+                        |m| {
+                            m.content("Hey @everyone, Stovoy is now live! Come watch over at https://www.twitch.tv/stovoy !");
+
+                            m
+                        },
+                    ).unwrap();
+                    None
                 }
             },
         };

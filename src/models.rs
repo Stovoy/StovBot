@@ -28,6 +28,7 @@ pub enum Action {
     AddVariable(Variable),
     EditVariable(Variable, EditType),
     DeleteVariable(Variable),
+    SendLiveNotification,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +42,7 @@ pub enum EditType {
 
 #[derive(Debug)]
 pub enum ActionError {
+    None,
     CommandAlreadyExists,
     CommandDoesNotExist,
     CannotDeleteBuiltInCommand,
@@ -55,6 +57,8 @@ pub enum ActionError {
     VariableWrongType,
     VariableBadEditIndex,
     VariableBadEditIndexValue,
+    PermissionDenied,
+    NotificationChannelNotFound,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
