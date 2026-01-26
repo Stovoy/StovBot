@@ -17,6 +17,7 @@ use serenity::builder::{CreateAttachment as DiscordAttachmentType, CreateEmbed, 
 use serenity::model::id::ChannelId;
 use serenity::prelude::Context as DiscordContext;
 use std::cmp::min;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +78,28 @@ impl Bot {
             || special_command::commands()
                 .iter()
                 .any(|special_command| special_command.trigger == command.trigger)
+    }
+
+    fn spawn_or_block<F>(&self, fut: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn(fut);
+            }
+            Err(_) => match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => {
+                    runtime.block_on(fut);
+                }
+                Err(e) => {
+                    println!("Error creating Tokio runtime: {}", e);
+                }
+            },
+        }
     }
 
     pub fn run(&mut self) {
@@ -407,7 +430,7 @@ impl Bot {
                     let (ctx, channel_id) = self.notification_channel.as_ref().unwrap();
                     let http = ctx.lock().unwrap().http.clone();
                     let channel_id = *channel_id;
-                    tokio::spawn(async move {
+                    self.spawn_or_block(async move {
                         let message = CreateMessage::new().content(
                             "Hey @everyone, Stovoy is now live! Come watch over at https://www.twitch.tv/stovoy !",
                         );
@@ -473,7 +496,7 @@ impl Bot {
                 let channel_id = msg.channel_id;
                 let text = text.to_string();
                 let png = png.clone();
-                tokio::spawn(async move {
+                self.spawn_or_block(async move {
                     let mut message = CreateMessage::new().content(text);
                     if let Some(ref png) = png {
                         let embed = CreateEmbed::new().image("attachment://waifu.png");
