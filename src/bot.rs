@@ -311,12 +311,14 @@ impl Bot {
                         };
                         if let Some(old_variable) = old_variable {
                             match edit_type {
-                                EditType::Append() => match (&variable.value, old_variable.value) {
+                                EditType::Append() => match (&variable.value, &old_variable.value) {
                                     (
                                         VariableValue::Text(new_text),
                                         VariableValue::Text(old_text),
                                     ) => {
-                                        variable.value = VariableValue::Text(old_text + new_text);
+                                        variable.value = VariableValue::Text(
+                                            format!("{}{}", old_text, new_text),
+                                        );
                                     }
                                     (
                                         VariableValue::StringList(new_list),
@@ -328,7 +330,7 @@ impl Bot {
                                     }
                                     _ => {}
                                 },
-                                EditType::Remove() => match (&variable.value, old_variable.value) {
+                                EditType::Remove() => match (&variable.value, &old_variable.value) {
                                     (
                                         VariableValue::Text(text_to_remove),
                                         VariableValue::Text(old_text),
@@ -339,36 +341,39 @@ impl Bot {
                                     }
                                     (
                                         VariableValue::StringList(new_list),
-                                        VariableValue::StringList(mut old_list),
+                                        VariableValue::StringList(old_list),
                                     ) => {
+                                        let mut list = old_list.clone();
                                         for item_to_remove in new_list.iter() {
-                                            old_list.retain(|old_item| {
+                                            list.retain(|old_item| {
                                                 old_item.value != item_to_remove.value
                                             });
                                         }
-                                        variable.value = VariableValue::StringList(old_list);
+                                        variable.value = VariableValue::StringList(list);
                                     }
                                     _ => {}
                                 },
                                 EditType::InsertAt(index) => {
-                                    match (&variable.value, old_variable.value) {
+                                    match (&variable.value, &old_variable.value) {
                                         (
                                             VariableValue::Text(text_to_insert),
-                                            VariableValue::Text(mut old_text),
+                                            VariableValue::Text(old_text),
                                         ) => {
-                                            let index = min(index, old_text.len());
-                                            old_text.insert_str(index, text_to_insert);
-                                            variable.value = VariableValue::Text(old_text);
+                                            let mut text = old_text.clone();
+                                            let index = min(index, text.len());
+                                            text.insert_str(index, text_to_insert);
+                                            variable.value = VariableValue::Text(text);
                                         }
                                         (
                                             VariableValue::StringList(new_list),
-                                            VariableValue::StringList(mut old_list),
+                                            VariableValue::StringList(old_list),
                                         ) => {
-                                            let index = min(index, old_list.len());
+                                            let mut list = old_list.clone();
+                                            let index = min(index, list.len());
                                             for item_to_insert in new_list.iter().rev() {
-                                                old_list.insert(index, item_to_insert.clone());
+                                                list.insert(index, item_to_insert.clone());
                                             }
-                                            variable.value = VariableValue::StringList(old_list);
+                                            variable.value = VariableValue::StringList(list);
                                         }
                                         _ => {}
                                     }

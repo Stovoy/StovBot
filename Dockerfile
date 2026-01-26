@@ -1,26 +1,30 @@
 # syntax=docker/dockerfile:experimental
-FROM rust:1.43-buster@sha256:afeb25419be9f7b69481bd5ad37f107a87fca1bb205a5b694a9f0c9136b5788f as build
+FROM rust:1.43-buster as build
 VOLUME ["/usr/local/cargo", "/stovbot/target"]
 WORKDIR /app
 RUN USER=root cargo init
 
-RUN rustup default nightly
+RUN rustup toolchain install nightly-2019-12-01 && \
+    rustup default nightly-2019-12-01
 
 COPY . ./
 RUN \
  --mount=type=cache,target=/usr/local/cargo/git \
  --mount=type=cache,target=/usr/local/cargo/registry \
  --mount=type=cache,target=/app/target \
- cargo build --release && \
+ cargo build --release --locked && \
  strip target/release/stovbot && \
  strip target/release/script_engine && \
  cp /app/target/release/stovbot /stovbot && \
  cp /app/target/release/script_engine /script_engine
 
-FROM debian:buster@sha256:f19be6b8095d6ea46f5345e2651eec4e5ee9e84fc83f3bc3b73587197853dc9e
+FROM debian:buster
 WORKDIR /app
 ENTRYPOINT ["/stovbot"]
-RUN apt-get update && \
+RUN sed -i 's|deb.debian.org/debian|archive.debian.org/debian|g; s|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list && \
+    sed -i '/buster-updates/d' /etc/apt/sources.list && \
+    echo 'Acquire::Check-Valid-Until \"false\";' > /etc/apt/apt.conf.d/99no-check-valid && \
+    apt-get update && \
     apt-get install -y \
         sqlite3 openssl ca-certificates \
         libfontconfig libxcb1 && \
