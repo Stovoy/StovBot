@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-FROM rust:latest as build
+FROM rust:bookworm as build
 VOLUME ["/usr/local/cargo", "/stovbot/target"]
 WORKDIR /app
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
