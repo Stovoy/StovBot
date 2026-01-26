@@ -5,12 +5,12 @@ use std::process::Command;
 enum ScriptRunnerError {
     Timeout,
     Crash,
-    IO(Error),
+    IO,
 }
 
 impl From<Error> for ScriptRunnerError {
-    fn from(e: Error) -> Self {
-        ScriptRunnerError::IO(e)
+    fn from(_e: Error) -> Self {
+        ScriptRunnerError::IO
     }
 }
 
@@ -20,7 +20,7 @@ pub fn run(script: &str, database_path: &str) -> String {
         Err(e) => match e {
             ScriptRunnerError::Timeout => "Script Error: Timeout".to_string(),
             ScriptRunnerError::Crash => "Script Error: Crash".to_string(),
-            ScriptRunnerError::IO(_) => "Script Error: IO".to_string(),
+            ScriptRunnerError::IO => "Script Error: IO".to_string(),
         },
     }
 }

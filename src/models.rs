@@ -1,13 +1,10 @@
 use crate::database::Database;
-use serde::export::fmt::Error;
-use serde::export::Formatter;
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use serenity::model::channel::Message as DiscordMessage;
 use serenity::prelude::Context as DiscordContext;
-use std::fmt::Debug;
-use std::fmt::Display;
+use std::fmt::{Debug, Display, Error, Formatter};
 use std::sync::{Arc, Mutex};
-use time::Timespec;
 use twitchchat::Writer as TwitchWriter;
 
 // Note: Wrapped in struct so that we can implement Debug on it.
@@ -64,8 +61,7 @@ pub enum ActionError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Command {
     pub id: i32,
-    #[serde(with = "TimespecDef")]
-    pub time_created: Timespec,
+    pub time_created: NaiveDateTime,
     pub trigger: String,
     pub response: String,
     #[serde(skip)]
@@ -98,7 +94,7 @@ impl Command {
     pub fn new(trigger: String, response: String) -> Command {
         Command {
             id: 0,
-            time_created: time::empty_tm().to_timespec(),
+            time_created: chrono::Utc::now().naive_utc(),
             trigger,
             response,
             actor: None,
@@ -110,7 +106,7 @@ impl Command {
     pub fn new_alias(trigger: String, alias: String) -> Command {
         Command {
             id: 0,
-            time_created: time::empty_tm().to_timespec(),
+            time_created: chrono::Utc::now().naive_utc(),
             trigger,
             response: alias,
             actor: None,
@@ -173,20 +169,11 @@ impl Command {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "Timespec")]
-pub struct TimespecDef {
-    sec: i64,
-    nsec: i32,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Variable {
     pub id: i32,
-    #[serde(with = "TimespecDef")]
-    pub time_created: Timespec,
-    #[serde(with = "TimespecDef")]
-    pub time_modified: Timespec,
+    pub time_created: NaiveDateTime,
+    pub time_modified: NaiveDateTime,
     pub name: String,
     pub value: VariableValue,
 }
@@ -195,8 +182,8 @@ impl Variable {
     pub fn new(name: String, value: VariableValue) -> Variable {
         Variable {
             id: 0,
-            time_created: time::empty_tm().to_timespec(),
-            time_modified: time::empty_tm().to_timespec(),
+            time_created: chrono::Utc::now().naive_utc(),
+            time_modified: chrono::Utc::now().naive_utc(),
             name,
             value,
         }
@@ -225,15 +212,14 @@ impl Display for VariableValue {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StringItem {
-    #[serde(with = "TimespecDef")]
-    pub time_created: Timespec,
+    pub time_created: NaiveDateTime,
     pub value: String,
 }
 
 impl StringItem {
     pub fn new(item: &str) -> StringItem {
         StringItem {
-            time_created: time::get_time(),
+            time_created: chrono::Utc::now().naive_utc(),
             value: item.to_string(),
         }
     }

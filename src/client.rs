@@ -7,7 +7,7 @@ use std::time::Duration;
 
 pub fn run(token: String, sender: EventBusSender, _event_rx: Receiver<Event>) {
     let mut rng = rand::thread_rng();
-    let client_id = format!("client_{}", rng.gen_range(1, 100000));
+    let client_id = format!("client_{}", rng.gen_range(1..100000));
     loop {
         for event in get_events(&token, &client_id) {
             sender.send(Event::BotEvent(event));

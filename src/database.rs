@@ -3,7 +3,7 @@ use rusqlite::types::{FromSql, FromSqlError, ToSql, ToSqlOutput, Value, ValueRef
 use rusqlite::{params, Connection, Error, Row};
 use serde_json;
 use std::env;
-use time;
+use chrono::Utc;
 
 #[cfg(test)]
 use rand::Rng;
@@ -152,7 +152,7 @@ impl Database {
         self.connection.execute(
             "INSERT INTO variable (name, value) VALUES(?1, ?2)
              ON CONFLICT(name) DO UPDATE SET value = ?2, time_modified = ?3",
-            params![variable.name, variable.value, time::get_time()],
+            params![variable.name, variable.value, Utc::now().naive_utc()],
         )
     }
 
@@ -238,7 +238,7 @@ fn test_set_variable() -> Result<(), Error> {
 #[cfg(test)]
 pub fn with_test_db(block: fn(connection: Database) -> Result<(), Error>) -> Result<(), Error> {
     let mut rng = rand::thread_rng();
-    let path = format!("./db_test_{}.db3", rng.gen_range(0, 1000000));
+    let path = format!("./db_test_{}.db3", rng.gen_range(0..1000000));
     let connection = Database::new_with_path(path.clone())?;
     let result = block(connection);
     match std::fs::remove_file(path) {

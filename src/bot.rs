@@ -8,11 +8,12 @@ use crate::models::{
 };
 use crate::twitch::TwitchEvent;
 use crate::{special_command, Event, EventBusSender};
+use base64::Engine;
 use crossbeam::channel::Receiver;
 use regex::Regex;
 use rusqlite::Error;
 use serde::{Deserialize, Serialize};
-use serenity::http::AttachmentType as DiscordAttachmentType;
+use serenity::builder::{CreateAttachment as DiscordAttachmentType, CreateEmbed, CreateMessage};
 use serenity::model::id::ChannelId;
 use serenity::prelude::Context as DiscordContext;
 use std::cmp::min;
@@ -84,16 +85,13 @@ impl Bot {
                 Ok(event) => match event {
                     Event::BotEvent(_) => None,
                     Event::TwitchEvent(event) => match event {
-                        TwitchEvent::Ready(writer) => {
-                            writer.join("stovoy").unwrap();
-                            None
-                        }
+                        TwitchEvent::Ready(_writer) => None,
                         TwitchEvent::PrivMsg(writer, msg) => Some(Message {
                             sender: User {
-                                username: msg.user().to_string(),
+                                username: msg.user.to_string(),
                             },
-                            text: msg.message().to_string(),
-                            source: Source::Twitch(writer, "stovoy".to_string()),
+                            text: msg.message.to_string(),
+                            source: Source::Twitch(writer, msg.channel.to_string()),
                         }),
                     },
                     Event::DiscordEvent(event) => match event {
@@ -407,14 +405,14 @@ impl Bot {
                 }
                 Action::SendLiveNotification => {
                     let (ctx, channel_id) = self.notification_channel.as_ref().unwrap();
-                    channel_id.send_message(
-                        ctx.lock().unwrap().http.clone(),
-                        |m| {
-                            m.content("Hey @everyone, Stovoy is now live! Come watch over at https://www.twitch.tv/stovoy !");
-
-                            m
-                        },
-                    ).unwrap();
+                    let http = ctx.lock().unwrap().http.clone();
+                    let channel_id = *channel_id;
+                    tokio::spawn(async move {
+                        let message = CreateMessage::new().content(
+                            "Hey @everyone, Stovoy is now live! Come watch over at https://www.twitch.tv/stovoy !",
+                        );
+                        let _ = channel_id.send_message(&http, message).await;
+                    });
                     None
                 }
             },
@@ -438,7 +436,7 @@ impl Bot {
             None => text,
             Some(matches) => {
                 let png_base64 = &matches[1];
-                png = match base64::decode(png_base64) {
+                png = match base64::engine::general_purpose::STANDARD.decode(png_base64) {
                     Ok(png) => Some(png),
                     Err(e) => {
                         println!("Error decoded image base64: {}", e);
@@ -460,30 +458,35 @@ impl Bot {
             Source::Admin => println!("{}", text),
             Source::Twitch(writer, channel) => match png {
                 Some(_) => {
-                    let text = format!("{} (only works in discord)", text).to_string();
-                    writer.send(channel, text).unwrap();
+                    let text = format!("{} (only works in discord)", text);
+                    let mut writer = writer.clone();
+                    let _ = writer.encode_sync(twitchchat::commands::privmsg(channel, &text));
                 }
                 None => {
-                    writer.send(channel, text).unwrap();
+                    let text = text.to_string();
+                    let mut writer = writer.clone();
+                    let _ = writer.encode_sync(twitchchat::commands::privmsg(channel, &text));
                 }
             },
             Source::Discord(ctx, msg) => {
-                if let Err(e) = msg.channel_id.send_message(&ctx.lock().unwrap().http, |m| {
-                    m.content(text);
+                let http = ctx.lock().unwrap().http.clone();
+                let channel_id = msg.channel_id;
+                let text = text.to_string();
+                let png = png.clone();
+                tokio::spawn(async move {
+                    let mut message = CreateMessage::new().content(text);
                     if let Some(ref png) = png {
-                        m.embed(|e| {
-                            e.image("attachment://waifu.png");
-                            e
-                        });
-                        m.add_file(DiscordAttachmentType::Bytes {
-                            data: std::borrow::Cow::Borrowed(png.as_slice()),
-                            filename: "waifu.png".to_string(),
-                        });
+                        let embed = CreateEmbed::new().image("attachment://waifu.png");
+                        message = message.embed(embed).add_file(DiscordAttachmentType::bytes(
+                            png.clone(),
+                            "waifu.png".to_string(),
+                        ));
                     }
-                    m
-                }) {
-                    println!("Error sending message: {:?}", e);
-                }
+                    let result = channel_id.send_message(&http, message).await;
+                    if let Err(e) = result {
+                        println!("Error sending message: {:?}", e);
+                    }
+                });
             }
         }
     }

@@ -12,37 +12,31 @@ use crate::models::{StringItem, Variable, VariableValue};
 
 #[derive(Logos, Debug, PartialEq)]
 enum Token {
-    #[end]
-    End,
-
-    #[error]
-    Error,
-
-    #[token = "$1"]
+    #[token("$1")]
     ArgOne,
 
-    #[token = "$2"]
+    #[token("$2")]
     ArgTwo,
 
-    #[token = "$user"]
+    #[token("$user")]
     User,
 
-    #[token = "$year"]
+    #[token("$year")]
     Year,
 
-    #[token = "$text"]
+    #[token("$text")]
     Text,
 
-    #[token = "{{"]
+    #[token("{{")]
     ScriptStart,
 
-    #[token = "}}}"]
+    #[token("}}}")]
     ScriptEndAndExtra,
 
-    #[token = "}}"]
+    #[token("}}")]
     ScriptEnd,
 
-    #[regex = "."]
+    #[regex(".")]
     Other,
 }
 
@@ -80,30 +74,30 @@ impl CommandExt for Command {
         let mut script = "".to_string();
         let mut in_script = false;
         let mut accumulator = &mut response;
-        loop {
-            match lexer.token {
-                Token::ArgOne => {
+        while let Some(token) = lexer.next() {
+            match token {
+                Ok(Token::ArgOne) => {
                     *accumulator += match args.nth(0) {
                         Some(text) => text,
                         None => "",
                     };
                 }
-                Token::ArgTwo => {
+                Ok(Token::ArgTwo) => {
                     *accumulator += match args.nth(1) {
                         Some(text) => text,
                         None => "",
                     };
                 }
-                Token::User => {
+                Ok(Token::User) => {
                     *accumulator += &message.sender.username;
                 }
-                Token::Year => {
+                Ok(Token::Year) => {
                     *accumulator += "YEAR";
                 }
-                Token::Text => {
+                Ok(Token::Text) => {
                     *accumulator += text;
                 }
-                Token::ScriptStart => {
+                Ok(Token::ScriptStart) => {
                     if in_script {
                         *accumulator += lexer.slice();
                     } else {
@@ -112,7 +106,7 @@ impl CommandExt for Command {
                         in_script = true;
                     }
                 }
-                Token::ScriptEnd => {
+                Ok(Token::ScriptEnd) => {
                     if in_script {
                         let script_result = &script_runner::run(&script, &self.database_path);
                         accumulator = &mut response;
@@ -122,7 +116,7 @@ impl CommandExt for Command {
                         *accumulator += lexer.slice();
                     }
                 }
-                Token::ScriptEndAndExtra => {
+                Ok(Token::ScriptEndAndExtra) => {
                     if in_script {
                         *accumulator += "}";
                         let script_result = &script_runner::run(&script, &self.database_path);
@@ -133,17 +127,13 @@ impl CommandExt for Command {
                         *accumulator += lexer.slice();
                     }
                 }
-                Token::Other => {
+                Ok(Token::Other) => {
                     *accumulator += lexer.slice();
                 }
-                Token::Error => {
+                Err(_) => {
                     println!("Lexer error: {}", lexer.slice());
                 }
-                Token::End => {
-                    break;
-                }
             }
-            lexer.advance();
         }
 
         if in_script {

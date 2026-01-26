@@ -1,23 +1,13 @@
-#![feature(proc_macro_hygiene, decl_macro)]
-#[macro_use]
-extern crate rocket;
-
-#[macro_use]
-extern crate clap;
-
 use admin::AdminEvent;
 use bot::{Bot, BotEvent};
-use clap::{App, Arg, ArgMatches};
+use clap::Parser;
 use crossbeam::channel::{bounded, Receiver, Sender};
 use discord::DiscordEvent;
-use futures::executor::block_on;
 use futures::stream::{BoxStream, StreamExt};
 use futures::task::{Context, Poll, Waker};
 use futures::Stream;
-use serde::export::fmt::Error;
-use serde::export::Formatter;
 use serde::Deserialize;
-use std::fmt::Debug;
+use std::fmt::{Debug, Error, Formatter};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -43,66 +33,53 @@ struct Secrets {
     discord_token: String,
 }
 
-fn parse_args<'a>() -> ArgMatches<'a> {
-    App::new("StovBot")
-        .version(&crate_version!()[..])
-        .author("Steve Mostovoy <stevemostovoysm@gmail.com>")
-        .about("Does awesome things")
-        .arg(
-            Arg::with_name("gui")
-                .long("gui")
-                .help("Runs the gui")
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("server")
-                .long("server")
-                .help("Runs the server")
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("cli")
-                .long("cli")
-                .help("Runs the cli")
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("client")
-                .long("client")
-                .help("Runs the client which will talk to a server")
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("twitch")
-                .long("twitch")
-                .help("Connects to twitch")
-                .takes_value(false),
-        )
-        .arg(
-            Arg::with_name("discord")
-                .long("discord")
-                .help("Connects to discord")
-                .takes_value(false),
-        )
-        .get_matches()
+#[derive(Parser, Debug, Clone)]
+#[command(name = "StovBot", about = "Does awesome things", version)]
+struct Args {
+    #[arg(long)]
+    gui: bool,
+    #[arg(long)]
+    server: bool,
+    #[arg(long)]
+    cli: bool,
+    #[arg(long)]
+    client: bool,
+    #[arg(long)]
+    twitch: bool,
+    #[arg(long)]
+    discord: bool,
 }
 
-fn main() -> Result<(), ConnectError> {
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            gui: false,
+            server: false,
+            cli: false,
+            client: false,
+            twitch: false,
+            discord: false,
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), ConnectError> {
     env_logger::init();
 
-    let args = parse_args();
+    let args = Args::parse();
 
-    if args.is_present("gui") {
+    if args.gui {
         gui::run();
     } else {
-        block_on(run())?;
+        run(&args).await?;
     }
 
     Ok(())
 }
 
-async fn run() -> Result<(), ConnectError> {
-    let connected_state = connect().await?;
+async fn run(args: &Args) -> Result<(), ConnectError> {
+    let connected_state = connect(args.clone()).await?;
     let stream: BoxStream<'static, Event> = Pin::from(Box::from(connected_state.boxed()));
     stream
         .for_each(|event| {
@@ -133,7 +110,7 @@ impl Debug for ConnectedState {
 }
 
 async fn load_secrets() -> Result<Secrets, ConnectError> {
-    let secrets_file = async_std::fs::read_to_string("./.stovbot/secrets.toml")
+    let secrets_file = tokio::fs::read_to_string("./.stovbot/secrets.toml")
         .await
         .map_err(|_| ConnectError::FileError)?;
 
@@ -198,29 +175,28 @@ impl EventBusSender {
     }
 }
 
-async fn connect() -> Result<ConnectedState, ConnectError> {
-    let args = parse_args();
+async fn connect(args: Args) -> Result<ConnectedState, ConnectError> {
 
     let (event_bus, event_sender) = EventBus::new();
 
     let secrets = load_secrets().await?;
 
-    if args.is_present("cli") {
+    if args.cli {
         connect_admin_cli_thread(event_sender.clone());
     }
 
-    if args.is_present("client") {
+    if args.client {
         connect_client_thread(secrets.clone(), event_sender.clone(), event_bus.add_rx());
     } else {
-        if args.is_present("twitch") {
+        if args.twitch {
             connect_twitch_thread(secrets.clone(), event_sender.clone());
         }
 
-        if args.is_present("discord") {
+        if args.discord {
             connect_discord_thread(secrets.clone(), event_sender.clone());
         }
 
-        if args.is_present("server") {
+        if args.server {
             connect_server_thread(event_sender.clone(), event_bus.add_rx());
         }
 
@@ -235,18 +211,25 @@ async fn connect() -> Result<ConnectedState, ConnectError> {
 
 fn connect_twitch_thread(secrets: Secrets, sender: EventBusSender) {
     let twitch_token = secrets.twitch_token;
-    thread::spawn(|| {
-        let client = twitch::connect(twitch_token);
-        let handler = twitch::Handler { sender };
-        handler.listen(client);
+    thread::spawn(move || {
+        let mut rt = tokio02::runtime::Runtime::new().expect("Failed to create tokio 0.2 runtime");
+        rt.block_on(async move {
+            match twitch::connect(twitch_token).await {
+                Ok(runner) => {
+                    let handler = twitch::Handler { sender };
+                    handler.listen(runner).await;
+                }
+                Err(e) => println!("Twitch connect error: {}", e),
+            }
+        });
     });
 }
 
 fn connect_discord_thread(secrets: Secrets, sender: EventBusSender) {
     let discord_token = secrets.discord_token;
-    thread::spawn(|| {
-        let mut discord_client = discord::connect(discord_token, sender);
-        if let Err(why) = discord_client.start_autosharded() {
+    tokio::spawn(async move {
+        let mut discord_client = discord::connect(discord_token, sender).await;
+        if let Err(why) = discord_client.start_autosharded().await {
             println!("Discord client error: {:?}", why);
         }
     });
@@ -270,7 +253,11 @@ fn connect_bot_thread(sender: EventBusSender, event_rx: Receiver<Event>) {
 }
 
 fn connect_server_thread(sender: EventBusSender, event_rx: Receiver<Event>) {
-    thread::spawn(|| server::run(sender, event_rx));
+    tokio::spawn(async move {
+        if let Err(e) = server::run(sender, event_rx).await {
+            println!("Server error: {}", e);
+        }
+    });
 }
 
 fn connect_client_thread(secrets: Secrets, sender: EventBusSender, event_rx: Receiver<Event>) {
@@ -341,7 +328,7 @@ impl Debug for Event {
                 },
                 Event::TwitchEvent(e) => match e {
                     TwitchEvent::Ready(_) => "Twitch - Ready".to_string(),
-                    TwitchEvent::PrivMsg(_, msg) => format!("{}: {}", msg.user(), msg.message()),
+                    TwitchEvent::PrivMsg(_, msg) => format!("{}: {}", msg.user, msg.message),
                 },
                 Event::DiscordEvent(e) => match e {
                     DiscordEvent::Ready(_, _) => "Discord - Ready".to_string(),

@@ -2,7 +2,7 @@
 name = "stovbot"
 version = "0.19.0"
 authors = ["Steve Mostovoy <stevemostovoysm@gmail.com>"]
-edition = "2018"
+edition = "2021"
 default-run = "stovbot"
 
 [[bin]]
@@ -19,26 +19,24 @@ lto = false
 codegen-units = 8
 
 [dependencies]
-twitchchat = "0.7.2"
-reqwest = { version = "0.10.1", features = ["blocking", "json"] }
-chrono = { version = "0.4.10"}
-serde = { version = "1.0", features = ["derive", "rc"] }
-serenity = {version = "0.8.0" }
-rhai = { git = "https://github.com/stovoy/rhai", branch = "master" }
-logos = "0.9.7"
-rand = "0.7.3"
-rusqlite = "0.21.0"
-time = "0.1.0"
-toml = "0.5.5"
-iced = { git = "https://github.com/hecrj/iced", branch = "master" }
-iced_native = { git = "https://github.com/hecrj/iced", branch = "master" }
-iced_core = { git = "https://github.com/hecrj/iced", branch = "master" }
-crossbeam = "0.7.3"
-serde_json = "1.0.44"
-futures = "0.3.1"
-async-std = "1.4.0"
-env_logger = "0.7.1"
-rocket = { version = "0.4.2", default-features = false }
-clap = "2.33.0"
+twitchchat = { version = "0.14", features = ["async", "tokio", "tokio-util"] }
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "rustls_backend"] }
+rhai = "1"
+logos = "0.14"
+rand = "0.8"
+rusqlite = { version = "0.32", features = ["chrono", "bundled"] }
+toml = "0.8"
+iced = "0.14"
+crossbeam = "0.8"
+serde_json = "1"
+futures = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio02 = { package = "tokio", version = "0.2", features = ["full"] }
+env_logger = "0.11"
+rocket = "0.5"
+clap = { version = "4", features = ["derive"] }
 regex = "1"
-base64 = "0.12"
+base64 = "0.22"

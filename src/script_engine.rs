@@ -4,7 +4,7 @@ use crate::database::Database;
 use crate::models::{Variable, VariableValue};
 use crossbeam::channel::{bounded, RecvTimeoutError};
 use rand::Rng;
-use rhai::{Any, AnyExt, Engine, EvalAltResult, RegisterFn};
+use rhai::{Array, Dynamic, Engine};
 use rusqlite::Error;
 use std::convert::TryInto;
 use std::fmt::Display;
@@ -30,18 +30,10 @@ fn main() {
         panic::set_hook(Box::new(|_| {}));
 
         let result = panic::catch_unwind(|| {
-            let mut script_engine = ScriptEngine::new();
-            match script_engine.0.eval::<String>(script.as_str()) {
-                Ok(result) => result,
-                Err(e) => match &e {
-                    EvalAltResult::ErrorMismatchOutputType(t, output) => match t.as_ref() {
-                        "i64" => format!("{}", output.clone().downcast::<i64>().unwrap()),
-                        "f64" => format!("{}", output.clone().downcast::<f64>().unwrap()),
-                        "bool" => format!("{}", output.clone().downcast::<bool>().unwrap()),
-                        _ => format!("Script Error: Unknown type {}", e),
-                    },
-                    _ => format!("Script Error: {}", e),
-                },
+            let script_engine = ScriptEngine::new();
+            match script_engine.0.eval::<Dynamic>(script.as_str()) {
+                Ok(result) => result.to_string(),
+                Err(e) => format!("Script Error: {}", e),
             }
         });
         match sender.send(match result {
@@ -119,17 +111,17 @@ impl ScriptFunction {
 
     fn random() -> f64 {
         let mut rng = rand::thread_rng();
-        rng.gen_range(0.0, 1.0)
+        rng.gen_range(0.0..1.0)
     }
 
-    fn random_index(x: Vec<Box<dyn Any>>) -> i64 {
+    fn random_index(x: Array) -> i64 {
         let mut rng = rand::thread_rng();
-        let index = rng.gen_range(0, x.len());
+        let index = rng.gen_range(0..x.len());
 
         index as i64
     }
 
-    fn len(x: Vec<Box<dyn Any>>) -> i64 {
+    fn len(x: Array) -> i64 {
         x.len().try_into().unwrap()
     }
 
@@ -158,19 +150,32 @@ impl ScriptFunction {
     // TODO: How to get these variable modification events across process to StovBot?
     // Want to serialize all these events and send them on stdout along with script output,
     // which means we'll need to store them somehow.
-    fn get(name: String) -> String {
+    fn get(name: String) -> Dynamic {
         let database = Database::connect(None).unwrap();
         match database.get_variable(&name) {
             Ok(variable) => match variable.value {
-                VariableValue::Text(text) => text,
-                VariableValue::StringList(_) => panic!(format!(
+                VariableValue::Text(text) => {
+                    let trimmed = text.trim();
+                    if let Ok(value) = trimmed.parse::<i64>() {
+                        Dynamic::from(value)
+                    } else if let Ok(value) = trimmed.parse::<f64>() {
+                        Dynamic::from(value)
+                    } else if let Ok(value) = trimmed.parse::<bool>() {
+                        Dynamic::from(value)
+                    } else {
+                        Dynamic::from(text)
+                    }
+                }
+                VariableValue::StringList(_) => panic!(
                     "Variable {} is StringList, not Text. Use get_list()!",
                     name
-                )),
+                ),
             },
             Err(e) => match e {
-                Error::QueryReturnedNoRows => panic!(format!("Variable {} does not exist!", name)),
-                _ => panic!(e),
+                Error::QueryReturnedNoRows => {
+                    panic!("Variable {} does not exist!", name)
+                }
+                _ => panic!("{}", e),
             },
         }
     }
@@ -185,25 +190,27 @@ impl ScriptFunction {
             .unwrap();
     }
 
-    fn get_list(name: String) -> Vec<Box<dyn Any>> {
+    fn get_list(name: String) -> Array {
         let database = Database::connect(None).unwrap();
         match database.get_variable(&name) {
             Ok(variable) => match variable.value {
-                VariableValue::Text(_) => panic!(format!(
+                VariableValue::Text(_) => panic!(
                     "Variable {} is Text, not StringList. Use get()!",
                     name
-                )),
+                ),
                 VariableValue::StringList(list) => {
-                    let mut results: Vec<Box<dyn Any>> = Vec::new();
+                    let mut results: Array = Vec::new();
                     for item in list.iter() {
-                        results.push(Box::new(item.value.clone()));
+                        results.push(Dynamic::from(item.value.clone()));
                     }
                     results
                 }
             },
             Err(e) => match e {
-                Error::QueryReturnedNoRows => panic!(format!("Variable {} does not exist!", name)),
-                _ => panic!(e),
+                Error::QueryReturnedNoRows => {
+                    panic!("Variable {} does not exist!", name)
+                }
+                _ => panic!("{}", e),
             },
         }
     }

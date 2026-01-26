@@ -1,11 +1,15 @@
-# syntax=docker/dockerfile:experimental
-FROM rust:1.43-buster as build
+# syntax=docker/dockerfile:1.6
+FROM rust:latest as build
 VOLUME ["/usr/local/cargo", "/stovbot/target"]
 WORKDIR /app
-RUN USER=root cargo init
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-RUN rustup toolchain install nightly-2019-12-01 && \
-    rustup default nightly-2019-12-01
+COPY Cargo.toml Cargo.lock ./
+RUN \
+ --mount=type=cache,target=/usr/local/cargo/git \
+ --mount=type=cache,target=/usr/local/cargo/registry \
+ cargo fetch --locked
 
 COPY . ./
 RUN \
@@ -18,16 +22,13 @@ RUN \
  cp /app/target/release/stovbot /stovbot && \
  cp /app/target/release/script_engine /script_engine
 
-FROM debian:buster
+FROM debian:bookworm-slim
 WORKDIR /app
 ENTRYPOINT ["/stovbot"]
-RUN sed -i 's|deb.debian.org/debian|archive.debian.org/debian|g; s|security.debian.org/debian-security|archive.debian.org/debian-security|g' /etc/apt/sources.list && \
-    sed -i '/buster-updates/d' /etc/apt/sources.list && \
-    echo 'Acquire::Check-Valid-Until \"false\";' > /etc/apt/apt.conf.d/99no-check-valid && \
-    apt-get update && \
+RUN apt-get update && \
     apt-get install -y \
         sqlite3 openssl ca-certificates \
-        libfontconfig libxcb1 && \
+        libfontconfig1 libxcb1 && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=build /script_engine /script_engine
 COPY --from=build /stovbot /stovbot

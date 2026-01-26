@@ -31,11 +31,11 @@ pub fn generate_waifu_image() -> String {
 
     let mut seeds = [Seed::Value(0); 18];
     for i in 0..17 {
-        seeds[i] = Seed::Value(rng.gen_range(0, 1000000));
+        seeds[i] = Seed::Value(rng.gen_range(0..1000000));
     }
     let mut values = [0.0; 3];
     for i in 0..3 {
-        values[i] = rng.gen_range(0.0, 1000.0);
+        values[i] = rng.gen_range(0.0..1000.0);
     }
     seeds[17] = Seed::Values(values);
 

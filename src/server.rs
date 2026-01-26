@@ -1,7 +1,7 @@
 use crate::bot::BotEvent;
 use crate::{Event, EventBusSender};
 use crossbeam::channel::Receiver;
-use rocket::State;
+use rocket::{get, routes, State};
 use serde::Deserialize;
 use serde_json;
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ impl PollState {
 }
 
 #[get("/poll/<client>")]
-fn poll(client: String, state: State<PollState>) -> String {
+fn poll(client: String, state: &State<PollState>) -> String {
     let mut index_map = state.client_indicies.lock().unwrap();
     let index = index_map.entry(client).or_insert(0);
     let events = state.events.lock().unwrap();
@@ -51,9 +51,11 @@ fn poll(client: String, state: State<PollState>) -> String {
     }
 }
 
-pub fn run(_sender: EventBusSender, event_rx: Receiver<Event>) {
-    rocket::ignite()
+pub async fn run(_sender: EventBusSender, event_rx: Receiver<Event>) -> Result<(), rocket::Error> {
+    rocket::build()
         .manage(PollState::new(event_rx))
         .mount("/", routes![poll])
-        .launch();
+        .launch()
+        .await?;
+    Ok(())
 }
